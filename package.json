@@ -10,10 +10,30 @@
     "build": "npm run clean && npm run build-ts",
     "clean": "rimraf ./dist",
     "build-ts": "npx tsc",
+    "prepare": "husky",
     "check-prettier": "prettier src/**/* --check",
     "check-eslint": "eslint src/**/*.ts",
     "fix-prettier": "npx prettier src/**/* --write",
     "test": "jest --coverage"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,json}": [
+      "eslint --fix",
+      "prettier --write"
+    ]
+  },
+  "_moduleAliases": {
+    "@constant": "dist/constant",
+    "@controllers": "dist/controllers",
+    "@core": "dist/core",
+    "@db": "dist/db",
+    "@helpers": "dist/helpers",
+    "@middlewares": "dist/middlewares",
+    "@models": "dist/models",
+    "@routes": "dist/routes",
+    "@services": "dist/services",
+    "@utils": "dist/utils",
+    "@tests": "dist/tests"
   },
   "keywords": [],
   "author": "",
@@ -37,9 +57,13 @@
     "@types/mongoose": "^5.11.97",
     "eslint": "^9.17.0",
     "globals": "^15.14.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.3.0",
+    "module-alias": "^2.2.3",
     "nodemon": "^3.1.9",
     "prettier": "^3.4.2",
     "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.2"
   }
