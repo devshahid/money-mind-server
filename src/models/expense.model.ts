@@ -11,6 +11,7 @@ export interface IExpenseModel extends Document {
       isPaid: boolean;
       expenseFixedDate: Date;
       paymentDate: Date;
+      recurring: 'ONE_TIME' | 'MONTHLY' | 'YEARLY';
     },
   ];
 }
