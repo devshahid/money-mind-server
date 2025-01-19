@@ -16,9 +16,9 @@ class UserController extends ResponseHandler {
 
   login = asyncHandler(async (req: Request, res: Response) => {
     const { email, password, role = 'USER' } = req.body;
-
+    const accessToken = req.get('accessToken');
     const userService = new UserService();
-    const response = await userService.loginService(email, password, role);
+    const response = await userService.loginService(email, password, role, accessToken);
     await this.sendResponse(response, res);
   });
 

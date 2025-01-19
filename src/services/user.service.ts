@@ -1,3 +1,4 @@
+import { UserLogin } from '@models/user-logins.model';
 import { CustomError } from '../core/ApiError';
 import jwtHandler from '../core/jwtHandler';
 import { User } from '../models/user.model';
@@ -8,7 +9,7 @@ class UserService {
     if (isExist) throw new CustomError('Email address already registered with us');
 
     const userData = new User({ email, password, role });
-    await userData.save();
+    const createdUser = await userData.save();
 
     if (!userData) throw new CustomError('Something went wrong while creating user');
     const token = jwtHandler.createJwtToken({
@@ -17,17 +18,25 @@ class UserService {
       userType: role,
     });
 
-    const createdUser = await User.findOneAndUpdate(
-      { _id: userData._id },
-      { $push: { accessToken: token } },
-      { new: true, projection: { password: 0 }, lean: true }
-    );
-    if (!createdUser) throw new CustomError('User not exist');
+    const loggedIn = new UserLogin({
+      userId: createdUser._id,
+      email,
+      accessToken: token,
+    });
 
-    return createdUser;
+    await loggedIn.save();
+
+    const user = await User.findById(createdUser._id, { password: 0 }, { lean: true });
+
+    return { ...user, accessToken: token };
   };
 
-  loginService = async (email: string, password: string, role: 'ADMIN' | 'USER') => {
+  loginService = async (
+    email: string,
+    password: string,
+    role: 'ADMIN' | 'USER',
+    accessToken?: string
+  ) => {
     const userData = await User.findOne({ email, role });
     if (!userData) throw new CustomError('Email address is not registered with us');
 
@@ -40,27 +49,33 @@ class UserService {
       userType: role,
     });
 
-    const updatedUser = await User.findOneAndUpdate(
-      { _id: userData._id },
-      { $push: { accessToken: token } },
-      { new: true, lean: true, projection: { password: 0 } }
-    );
-    if (!updatedUser) throw new CustomError('User data not updated');
+    // Check if accessToken in headers and remove the matching document:
+    if (accessToken && accessToken.length > 0) {
+      await UserLogin.findOneAndDelete({ accessToken: accessToken });
+    }
 
-    return updatedUser;
+    const loggedIn = new UserLogin({
+      userId: userData._id,
+      email: userData.email,
+      accessToken: token,
+    });
+    await loggedIn.save();
+
+    const updatedUser = await User.findById(userData._id, { password: 0 }, { lean: true });
+    if (!updatedUser) throw new CustomError('User not exist');
+    return { ...updatedUser, accessToken: token };
   };
 
   logoutService = async (accessToken: string) => {
-    const user = await User.findOne({ accessToken: { $in: [accessToken] } });
-    if (!user) throw new CustomError('User not found');
+    const user = await UserLogin.findOne({ accessToken });
+    if (!user) throw new CustomError('User not logged in found');
 
-    const updatedUser = await User.findOneAndUpdate(
+    const updatedUser = await UserLogin.findOneAndDelete(
       { _id: user._id },
-      { $pull: { accessToken: accessToken } },
       { new: true, lean: true }
     );
 
-    if (!updatedUser) throw new CustomError('User data not updated');
+    if (!updatedUser) throw new CustomError('Something went wrong while logging not user');
     return updatedUser;
   };
 }

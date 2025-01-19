@@ -1,9 +1,10 @@
 import { NextFunction, Request, Response } from 'express';
 import asyncHandler from '@helpers/asyncHandler';
-import { AuthError } from '@core/ApiError';
+import { AuthError, CustomError } from '@core/ApiError';
 import { ERROR } from '@constant/index';
 import jwtHandler, { JWT } from '@core/jwtHandler';
 import { IUserModel, User } from '@models/user.model';
+import { UserLogin } from '@models/user-logins.model';
 
 export interface CustomRequest extends Request {
   user?: IUserModel;
@@ -12,10 +13,9 @@ export interface CustomRequest extends Request {
 
 class AuthHandler {
   private validateUser = async (accessToken: string, verifyToken: JWT) => {
-    const userData = await User.findOne({
+    const userData = await UserLogin.findOne({
       accessToken,
       email: verifyToken.email,
-      role: verifyToken.userType,
     });
     if (!userData) throw new AuthError(ERROR.LOGIN_FIRST);
 
@@ -23,7 +23,13 @@ class AuthHandler {
     if (verifyToken.email != userData.email) throw new AuthError(ERROR.ACCESSTOKEN_MISMATCH);
 
     //If token verified correctly then go ahead:
-    return userData;
+    const user = await User.findOne(
+      { email: userData.email, role: verifyToken.userType },
+      { password: 0 }
+    );
+    if (!user) throw new CustomError('User not exist');
+
+    return user;
   };
 
   private checkValidations = async (
