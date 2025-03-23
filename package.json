@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "npm run build && npm run serve",
-    "dev": "nodemon --watch 'src/**/*.ts' src/index.ts",
+    "dev": "nodemon -r tsconfig-paths/register -r dotenv/config src/index.ts",
     "serve": "node -r dotenv/config dist/index.js",
     "build": "npm run clean && npm run build-ts",
     "clean": "rimraf ./dist",
@@ -21,19 +21,6 @@
       "eslint --fix",
       "prettier --write"
     ]
-  },
-  "_moduleAliases": {
-    "@constant": "dist/constant",
-    "@controllers": "dist/controllers",
-    "@core": "dist/core",
-    "@db": "dist/db",
-    "@helpers": "dist/helpers",
-    "@middlewares": "dist/middlewares",
-    "@models": "dist/models",
-    "@routes": "dist/routes",
-    "@services": "dist/services",
-    "@utils": "dist/utils",
-    "@tests": "dist/tests"
   },
   "keywords": [],
   "author": "",

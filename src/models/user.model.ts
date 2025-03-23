@@ -49,7 +49,7 @@ userSchema.methods.comparePassword = async function (password: string): Promise<
 };
 
 // Create a compound index on email and role
-userSchema.index({ email: 1, role: 1 }, { unique: true });
+userSchema.index({ email: 1, role: 1 });
 
 const User = mongoose.model<IUserModel>('User', userSchema);
 export { User };

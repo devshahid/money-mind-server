@@ -51,7 +51,6 @@ const expenseSchema: Schema<IExpenseModel> = new Schema(
       },
       paymentDate: {
         type: Date,
-        required: true,
       },
     },
   },

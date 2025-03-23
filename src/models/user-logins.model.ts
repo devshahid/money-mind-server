@@ -25,7 +25,7 @@ const userLoginSchema: Schema<IUserLoginModel> = new Schema(
 );
 
 // Create a compound index on email and role
-userLoginSchema.index({ email: 1 }, { unique: true });
+userLoginSchema.index({ email: 1 });
 
 const UserLogin = mongoose.model<IUserLoginModel>('UserLogin', userLoginSchema);
 export { UserLogin };
