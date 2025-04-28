@@ -2,13 +2,13 @@ import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface ICategoryModel extends Document {
   _id: Types.ObjectId;
-  userId: Types.ObjectId;
+  createdBy: Types.ObjectId;
   categoryName: string;
 }
 
 const categorySchema: Schema<ICategoryModel> = new Schema(
   {
-    userId: {
+    createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,

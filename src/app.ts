@@ -12,8 +12,9 @@ process.on('uncaughtException', (e) => {
 const app = express();
 
 // Apply parser middleware to parse data in json and url form
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// app.ts or server.ts
+app.use(express.json({ limit: '10mb' })); // or higher, like '50mb'
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Apply cors and helmet middlewares
 app.use(cors());
