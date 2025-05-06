@@ -10,7 +10,6 @@ import { common } from '@utils/common';
 import { pagination } from '@utils/pagination';
 import { FilterQuery, PipelineStage, Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
-
 class TransactionLogsService {
   private userId: Types.ObjectId;
   constructor(userId: Types.ObjectId) {
@@ -117,11 +116,55 @@ class TransactionLogsService {
     };
   }
 
-  async fetchTransactionLogs(status: string, page: number, limit: number, uploadKey?: string) {
+  async fetchTransactionLogs(
+    status: string,
+    page: number,
+    limit: number,
+    amount: string,
+    dateFrom: string,
+    dateTo: string,
+    bankName: string,
+    transactionType: string,
+    type: string,
+    labels: string,
+    category: string,
+    keyword: string,
+    uploadKey?: string
+  ) {
     const query: PipelineStage[] = [];
     const matchQuery: FilterQuery<ITransactionLogs> = { userId: this.userId, status: 'PENDING' };
     if (uploadKey) matchQuery.uploadKey = uploadKey;
+    if (amount) matchQuery.amount = Number(amount);
+    if (bankName) matchQuery.bankName = { $regex: bankName, $options: 'i' };
 
+    if (transactionType && transactionType === 'online') matchQuery.isCash = false;
+    if (transactionType && transactionType === 'cash') matchQuery.isCash = true;
+
+    if (type && type === 'debit') matchQuery.isCredit = false;
+    if (type && type === 'credit') matchQuery.isCredit = true;
+
+    if (labels && labels.length > 0) matchQuery.label = { $in: labels };
+    if (category && category.length > 0) matchQuery.category = { $in: category };
+
+    if (dateFrom) {
+      const startDate = new Date(dateFrom);
+      matchQuery.transactionDate = { $gte: startDate };
+    }
+
+    if (dateTo) {
+      const endDate = new Date(dateTo);
+      matchQuery.transactionDate = { $lte: endDate };
+    }
+
+    if (keyword && keyword.length > 0) {
+      matchQuery.$or = [
+        { narration: { $regex: keyword, $options: 'i' } },
+        { notes: { $regex: keyword, $options: 'i' } },
+        { category: { $regex: keyword, $options: 'i' } },
+        { bankName: { $regex: keyword, $options: 'i' } },
+        { amount: keyword },
+      ];
+    }
     query.push({ $match: matchQuery });
     query.push({
       $addFields: {
@@ -227,6 +270,25 @@ class TransactionLogsService {
   async listCategoriesService() {
     const categories = await Category.find({ createdBy: this.userId });
     return categories;
+  }
+
+  async deleteAllTransactionsService() {
+    // await Category.deleteMany({ createdBy: this.userId });
+    // await Labels.deleteMany({ createdBy: this.userId });
+    // await TransactionLogs.deleteMany({ userId: this.userId });
+    return 'Logs deleted successfully';
+  }
+
+  async addCashMemoService(transaction: ITransactionLogs) {
+    const newTransaction = new TransactionLogs({
+      ...transaction,
+      userId: this.userId,
+    });
+
+    const loggedTransaction = await newTransaction.save();
+    if (!loggedTransaction)
+      throw new CustomError('Something went wrong while adding the transaction');
+    return loggedTransaction;
   }
 }
 

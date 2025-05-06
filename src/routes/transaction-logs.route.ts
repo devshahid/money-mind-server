@@ -12,7 +12,7 @@ transactionLogsRoute.post(
   transactionLogsController.uploadLogsFromFile
 );
 
-transactionLogsRoute.get(
+transactionLogsRoute.post(
   '/list-transactions',
   authHandler.userAccess,
   transactionLogsController.fetchTransactions
@@ -46,6 +46,18 @@ transactionLogsRoute.get(
   '/list-categories',
   authHandler.userAccess,
   transactionLogsController.categoryList
+);
+
+transactionLogsRoute.delete(
+  '/delete-all-transactions',
+  authHandler.userAccess,
+  transactionLogsController.deleteAllTransactions
+);
+
+transactionLogsRoute.post(
+  '/add-cashmemo',
+  authHandler.userAccess,
+  transactionLogsController.addCashMemo
 );
 
 export { transactionLogsRoute };
