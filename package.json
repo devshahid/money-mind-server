@@ -14,7 +14,7 @@
     "check-prettier": "prettier src/**/* --check",
     "check-eslint": "eslint src/**/*.ts",
     "fix-prettier": "npx prettier src/**/* --write",
-    "deploy": "serverless deploy",
+    "deploy": "npm run build && serverless deploy",
     "test": "jest --coverage"
   },
   "lint-staged": {
