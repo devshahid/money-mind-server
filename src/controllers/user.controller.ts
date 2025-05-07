@@ -2,14 +2,14 @@ import { Request, Response } from 'express';
 import asyncHandler from '../helpers/asyncHandler';
 import ResponseHandler from '../helpers/responseHandler';
 import { UserService } from '../services/user.service';
-import { CustomError } from '@core/ApiError';
+import { CustomError } from '../core/ApiError';
 
 class UserController extends ResponseHandler {
   register = asyncHandler(async (req: Request, res: Response) => {
-    const { email, password, role = 'USER' } = req.body;
-
+    const { email, password, fullName, role = 'USER' } = req.body;
+    console.log('REGISTER ROUTE: ', req.body);
     const userService = new UserService();
-    const response = await userService.registerService(email, password, role);
+    const response = await userService.registerService(email, password, fullName, role);
 
     await this.sendResponse(response, res, 'User created successfully');
   });

@@ -1,4 +1,4 @@
-import { SuccessMsgResponse } from '@core/ApiResponse';
+import { SuccessMsgResponse } from '../core/ApiResponse';
 import { Response } from 'express';
 abstract class ResponseHandler {
   sendResponse = async (

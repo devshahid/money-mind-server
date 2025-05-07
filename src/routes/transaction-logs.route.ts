@@ -1,6 +1,6 @@
 import express from 'express';
-import authHandler from '@middlewares/auth/authHandler';
-import { TransactionLogsController } from '@controllers/transaction-logs.controller';
+import authHandler from '../middlewares/auth/authHandler';
+import { TransactionLogsController } from '../controllers/transaction-logs.controller';
 
 const transactionLogsRoute = express.Router();
 

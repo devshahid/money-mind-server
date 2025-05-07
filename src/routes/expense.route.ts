@@ -1,6 +1,6 @@
 import express from 'express';
-import authHandler from '@middlewares/auth/authHandler';
-import { ExpenseController } from '@controllers/expense.controller';
+import authHandler from '../middlewares/auth/authHandler';
+import { ExpenseController } from '../controllers/expense.controller';
 
 const expenseRoute = express.Router();
 

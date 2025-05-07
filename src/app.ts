@@ -2,8 +2,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 
-import { ApiError } from '@core/ApiError';
-import router from '@routes/index';
+import { ApiError } from './core/ApiError';
+import router from './routes/index';
 
 process.on('uncaughtException', (e) => {
   console.error(e);
@@ -11,13 +11,24 @@ process.on('uncaughtException', (e) => {
 
 const app = express();
 
+// Create health route
+app.get('/health', (req: Request, res: Response) => {
+  res.status(200).send({ message: 'Server is running' });
+});
+
 // Apply parser middleware to parse data in json and url form
 // app.ts or server.ts
 app.use(express.json({ limit: '10mb' })); // or higher, like '50mb'
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Apply cors and helmet middlewares
-app.use(cors());
+app.use(
+  cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'accessToken', 'accesstoken'],
+  })
+);
 app.use(helmet());
 
 // Middleware to log requests

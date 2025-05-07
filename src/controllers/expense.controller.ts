@@ -1,7 +1,7 @@
-import asyncHandler from '@helpers/asyncHandler';
-import ResponseHandler from '@helpers/responseHandler';
-import { CustomRequest } from '@middlewares/auth/authHandler';
-import { ExpenseService } from '@services/expense.service';
+import asyncHandler from '../helpers/asyncHandler';
+import ResponseHandler from '../helpers/responseHandler';
+import { CustomRequest } from '../middlewares/auth/authHandler';
+import { ExpenseService } from '../services/expense.service';
 import { Response } from 'express';
 
 class ExpenseController extends ResponseHandler {

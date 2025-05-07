@@ -1,7 +1,7 @@
-import asyncHandler from '@helpers/asyncHandler';
-import ResponseHandler from '@helpers/responseHandler';
-import { CustomRequest } from '@middlewares/auth/authHandler';
-import { IncomeService } from '@services/income.services';
+import asyncHandler from '../helpers/asyncHandler';
+import ResponseHandler from '../helpers/responseHandler';
+import { CustomRequest } from '../middlewares/auth/authHandler';
+import { IncomeService } from '../services/income.services';
 import { Response } from 'express';
 
 class IncomeController extends ResponseHandler {

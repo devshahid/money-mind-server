@@ -1,6 +1,6 @@
 import express from 'express';
-import authHandler from '@middlewares/auth/authHandler';
-import { DebtController } from '@controllers/debt.controller';
+import authHandler from '../middlewares/auth/authHandler';
+import { DebtController } from '../controllers/debt.controller';
 
 const debtRoute = express.Router();
 

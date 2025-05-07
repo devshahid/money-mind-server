@@ -1,10 +1,10 @@
 import { NextFunction, Request, Response } from 'express';
-import asyncHandler from '@helpers/asyncHandler';
-import { AuthError, CustomError } from '@core/ApiError';
-import { ERROR } from '@constant/index';
-import jwtHandler, { JWT } from '@core/jwtHandler';
-import { IUserModel, User } from '@models/user.model';
-import { UserLogin } from '@models/user-logins.model';
+import asyncHandler from '../../helpers/asyncHandler';
+import { AuthError, CustomError } from '../../core/ApiError';
+import { ERROR } from '../../constant/index';
+import jwtHandler, { JWT } from '../../core/jwtHandler';
+import { IUserModel, User } from '../../models/user.model';
+import { UserLogin } from '../../models/user-logins.model';
 
 export interface CustomRequest extends Request {
   user?: IUserModel;

@@ -1,8 +1,8 @@
-import { CustomError } from '@core/ApiError';
-import asyncHandler from '@helpers/asyncHandler';
-import ResponseHandler from '@helpers/responseHandler';
-import { CustomRequest } from '@middlewares/auth/authHandler';
-import { TransactionLogsService } from '@services/transaction-logs.service';
+import { CustomError } from '../core/ApiError';
+import asyncHandler from '../helpers/asyncHandler';
+import ResponseHandler from '../helpers/responseHandler';
+import { CustomRequest } from '../middlewares/auth/authHandler';
+import { TransactionLogsService } from '../services/transaction-logs.service';
 import { Response } from 'express';
 
 class TransactionLogsController extends ResponseHandler {

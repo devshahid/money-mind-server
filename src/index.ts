@@ -1,5 +1,3 @@
-import 'module-alias/register';
-
 /* Importing dotenv for environment variables */
 import dotenv from 'dotenv';
 dotenv.config({
@@ -7,7 +5,7 @@ dotenv.config({
 });
 
 /* Importing Database connection function */
-import connectDb from '@db/index';
+import connectDb from './db/index';
 
 /* Importing main express application */
 import app from './app';
@@ -16,7 +14,9 @@ const port = process.env.PORT || 8000;
 async function initializeApp() {
   try {
     /* Connecting Database */
-    await connectDb();
+    if (process.env.ENVIRONMENT === 'dev' && process.env.SERVER === 'local') {
+      await connectDb();
+    }
 
     /* Starting app on env port when database connected successfully */
     app.listen(port, () => {

@@ -1,5 +1,5 @@
 import jwt, { SignOptions } from 'jsonwebtoken';
-import { AuthError, CustomError } from '@core/ApiError';
+import { AuthError, CustomError } from '../core/ApiError';
 import { Types } from 'mongoose';
 
 export interface JWT {

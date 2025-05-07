@@ -1,7 +1,7 @@
-import asyncHandler from '@helpers/asyncHandler';
-import ResponseHandler from '@helpers/responseHandler';
-import { CustomRequest } from '@middlewares/auth/authHandler';
-import { DebtService } from '@services/debt.service';
+import asyncHandler from '../helpers/asyncHandler';
+import ResponseHandler from '../helpers/responseHandler';
+import { CustomRequest } from '../middlewares/auth/authHandler';
+import { DebtService } from '../services/debt.service';
 import { Response } from 'express';
 
 class DebtController extends ResponseHandler {

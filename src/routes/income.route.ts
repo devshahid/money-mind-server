@@ -1,6 +1,6 @@
 import express from 'express';
-import authHandler from '@middlewares/auth/authHandler';
-import { IncomeController } from '@controllers/income.controller';
+import authHandler from '../middlewares/auth/authHandler';
+import { IncomeController } from '../controllers/income.controller';
 
 const incomeRoute = express.Router();
 

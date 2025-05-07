@@ -1,13 +1,18 @@
-import { UserLogin } from '@models/user-logins.model';
+import { UserLogin } from '../models/user-logins.model';
 import { CustomError } from '../core/ApiError';
 import jwtHandler from '../core/jwtHandler';
 import { User } from '../models/user.model';
 
 class UserService {
-  registerService = async (email: string, password: string, role: 'ADMIN' | 'USER') => {
+  registerService = async (
+    email: string,
+    password: string,
+    fullName: string,
+    role: 'ADMIN' | 'USER'
+  ) => {
     const isExist = await User.findOne({ email, role });
     if (isExist) throw new CustomError('Email address already registered with us');
-
+    console.log('IS EXIST: ', isExist);
     const userData = new User({ email, password, role });
     const createdUser = await userData.save();
 
@@ -22,6 +27,7 @@ class UserService {
       userId: createdUser._id,
       email,
       accessToken: token,
+      fullName,
     });
 
     await loggedIn.save();

@@ -1,6 +1,6 @@
-import { CustomError } from '@core/ApiError';
-import { Debt, IDebtDetails } from '@models/debts.model';
-import { common } from '@utils/common';
+import { CustomError } from '../core/ApiError';
+import { Debt, IDebtDetails } from '../models/debts.model';
+import { common } from '../utils/common';
 import { Types } from 'mongoose';
 
 class DebtService {

@@ -6,6 +6,7 @@ export interface IUserModel extends Document {
   role: 'ADMIN' | 'USER';
   email: string;
   password: string;
+  fullName: string;
   dob: string;
   settings: {
     monthlyReminder: boolean;
@@ -25,6 +26,7 @@ const userSchema: Schema<IUserModel> = new Schema(
       lowercase: true,
       required: true,
     },
+    fullName: { type: String },
     password: {
       type: String,
       required: true,

@@ -1,6 +1,6 @@
-import { CustomError } from '@core/ApiError';
-import { Income, IncomeSource } from '@models/income.model';
-import { common } from '@utils/common';
+import { CustomError } from '../core/ApiError';
+import { Income, IncomeSource } from '../models/income.model';
+import { common } from '../utils/common';
 import { Types } from 'mongoose';
 
 class IncomeService {
