@@ -12,29 +12,11 @@ class UserService {
   ) => {
     const isExist = await User.findOne({ email, role });
     if (isExist) throw new CustomError('Email address already registered with us');
-    console.log('IS EXIST: ', isExist);
-    const userData = new User({ email, password, role });
+    const userData = new User({ email, password, role, fullName });
     const createdUser = await userData.save();
 
-    if (!userData) throw new CustomError('Something went wrong while creating user');
-    const token = jwtHandler.createJwtToken({
-      email,
-      userId: userData._id,
-      userType: role,
-    });
-
-    const loggedIn = new UserLogin({
-      userId: createdUser._id,
-      email,
-      accessToken: token,
-      fullName,
-    });
-
-    await loggedIn.save();
-
-    const user = await User.findById(createdUser._id, { password: 0 }, { lean: true });
-
-    return { ...user, accessToken: token };
+    if (!createdUser) throw new CustomError('Something went wrong while creating user');
+    return 'User registered successfully';
   };
 
   loginService = async (

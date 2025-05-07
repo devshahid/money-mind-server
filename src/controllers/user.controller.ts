@@ -7,7 +7,6 @@ import { CustomError } from '../core/ApiError';
 class UserController extends ResponseHandler {
   register = asyncHandler(async (req: Request, res: Response) => {
     const { email, password, fullName, role = 'USER' } = req.body;
-    console.log('REGISTER ROUTE: ', req.body);
     const userService = new UserService();
     const response = await userService.registerService(email, password, fullName, role);
 
