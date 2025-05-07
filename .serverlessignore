@@ -1,0 +1,4 @@
+src/
+*.ts
+.env
+tsconfig.json

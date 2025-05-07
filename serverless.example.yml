@@ -1,0 +1,53 @@
+app: <YOUR APP NAME>
+service: <YOUR SERVICE NAME>
+
+provider:
+  name: aws
+  stage: prod
+  timeout: 20
+  region: ap-south-1
+  runtime: nodejs20.x
+  environment:
+    NODE_ENV: 'prod'
+    PORT: 8000
+    DB_NAME: '<YOUR DB NAME>'
+    DB_URL: '<YOUR DB CONNECTION STRING>'
+    JWT_SECRET_KEY: '<YOUR JWT SECRET>'
+    ENVIRONMENT: 'prod'
+    SERVER: 'deploy'
+
+functions:
+  management-api:
+    handler: dist/handler.debtmanagementapi
+    events:
+      - http:
+          path: /
+          method: ANY
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - Authorization
+              - Accept
+              - Origin
+              - Access-Control-Allow-Origin
+              - Access-Control-Allow-Headers
+              - acccessToken
+              - accesstoken
+            allowCredentials: false
+
+      - http:
+          path: /{proxy+}
+          method: ANY
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - Authorization
+              - Accept
+              - Origin
+              - Access-Control-Allow-Origin
+              - Access-Control-Allow-Headers
+              - acccessToken
+              - accesstoken
+            allowCredentials: false

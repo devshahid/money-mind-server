@@ -14,6 +14,7 @@
     "check-prettier": "prettier src/**/* --check",
     "check-eslint": "eslint src/**/*.ts",
     "fix-prettier": "npx prettier src/**/* --write",
+    "deploy": "serverless deploy",
     "test": "jest --coverage"
   },
   "lint-staged": {
@@ -34,16 +35,19 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.9.2",
+    "serverless": "^4.14.3",
+    "serverless-http": "^3.2.0",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
-    "@types/express": "^5.0.0",
+    "@types/express": "^5.0.1",
     "@types/jest": "^29.5.14",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/mongoose": "^5.11.97",
+    "@types/node": "^22.15.14",
     "eslint": "^9.17.0",
     "globals": "^15.14.0",
     "husky": "^9.1.7",
@@ -51,9 +55,10 @@
     "module-alias": "^2.2.3",
     "nodemon": "^3.1.9",
     "prettier": "^3.4.2",
+    "serverless-esbuild": "^1.55.0",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.7.2",
+    "typescript": "^5.7.3",
     "typescript-eslint": "^8.18.2"
   }
 }
