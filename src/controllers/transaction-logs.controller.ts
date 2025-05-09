@@ -7,10 +7,10 @@ import { Response } from 'express';
 
 class TransactionLogsController extends ResponseHandler {
   uploadLogsFromFile = asyncHandler(async (req: CustomRequest, res: Response) => {
-    const { rows } = req.body;
+    const { rows, bankName } = req.body;
     if (!req.user?._id) throw new CustomError('Please login first!!');
     const transactionLogsService = new TransactionLogsService(req.user?._id);
-    const response = await transactionLogsService.uploadLogsFromFile(rows);
+    const response = await transactionLogsService.uploadLogsFromFile(rows, bankName);
     await this.sendResponse(response, res);
   });
 

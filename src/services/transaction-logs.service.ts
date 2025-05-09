@@ -74,7 +74,7 @@ class TransactionLogsService {
     }
   };
 
-  async uploadLogsFromFile(logs: ITransactionPayload[], bankName?: string) {
+  async uploadLogsFromFile(logs: ITransactionPayload[], bankName: string) {
     const hashMappedLogs = logs.map((log) => ({
       ...log,
       hashMap: this.createHashMap(log),
@@ -103,7 +103,7 @@ class TransactionLogsService {
           uploadKey: uniqueKey,
           isCredit: log.withdrawlAmount?.toString().length > 0 ? false : true,
           isCash: log.isCash ?? false,
-          bankName: bankName ?? '',
+          bankName: bankName,
           hashMap: log.hashMap,
         }))
       );
