@@ -34,9 +34,9 @@ class CommonUtils {
     return typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id;
   };
 
-  parseFlexibleDate = (dateStr: string): string | null => {
+  parseFlexibleDate = (dateStr: string): Date | null => {
     const parsed = dayjs(dateStr.trim(), acceptedFormats, true);
-    return parsed.isValid() ? parsed.format('DD/MM/YYYY') : null;
+    return parsed.isValid() ? parsed.toDate() : null;
   };
 }
 

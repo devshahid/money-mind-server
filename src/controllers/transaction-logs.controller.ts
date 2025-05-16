@@ -16,7 +16,6 @@ class TransactionLogsController extends ResponseHandler {
 
   fetchTransactions = asyncHandler(async (req: CustomRequest, res: Response) => {
     const {
-      status,
       uploadKey,
       page = 1,
       limit = 10,
@@ -33,7 +32,6 @@ class TransactionLogsController extends ResponseHandler {
     if (!req.user?._id) throw new CustomError('Please login first!!');
     const transactionLogsService = new TransactionLogsService(req.user?._id);
     const response = await transactionLogsService.fetchTransactionLogs(
-      status as string,
       Number(page),
       Number(limit),
       amount,
@@ -98,6 +96,18 @@ class TransactionLogsController extends ResponseHandler {
     if (!req.user?._id) throw new CustomError('Please login first!!');
     const transactionLogsService = new TransactionLogsService(req.user?._id);
     const response = await transactionLogsService.addCashMemoService(req.body);
+    await this.sendResponse(response, res);
+  });
+
+  syncMultipleTransactions = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { transactions, page, limit } = req.body;
+    if (!req.user?._id) throw new CustomError('Please login first!!');
+    const transactionLogsService = new TransactionLogsService(req.user?._id);
+    const response = await transactionLogsService.syncTransactionsWithDB(
+      transactions,
+      Number(page),
+      Number(limit)
+    );
     await this.sendResponse(response, res);
   });
 }

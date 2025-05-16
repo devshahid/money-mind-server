@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import { CustomError } from '../core/ApiError';
 import { Category } from '../models/category.model';
 import { Labels } from '../models/labels.model';
@@ -43,34 +44,49 @@ class TransactionLogsService {
     return `${date}-${narration}-${refNumber}-${depositAmount}-${withdrawlAmount}`;
   };
 
-  private upsertLabels = async (transactionLog: ITransactionLogs, userId: Types.ObjectId) => {
-    if (Array.isArray(transactionLog.label) && transactionLog.label.length > 0) {
-      const labels = await Labels.find({
-        createdBy: userId,
-        labelName: { $in: transactionLog.label },
-      });
-      // compare the labels with the transaction log labels and remove the duplicates
-      const existingLabels = labels.map((label) => label.labelName.toLowerCase());
-      const newLabels = transactionLog.label.filter(
-        (label) => !existingLabels.includes(label.toLowerCase())
-      );
-      // if there are new labels, insert them into the Labels collection
-      if (newLabels.length > 0) {
-        const operations = newLabels.map((labelName: string) => ({
-          updateOne: {
-            filter: { labelName, createdBy: userId },
-            update: {
-              $setOnInsert: {
-                labelName,
-                createdBy: userId,
-              },
-            },
-            upsert: true,
-          },
-        }));
+  private upsertLabels = async (transactions: ITransactionLogs[], userId: Types.ObjectId) => {
+    const labelSet = new Set<string>();
 
-        await Labels.bulkWrite(operations);
+    // 1. Collect all unique labels from transactions
+    for (const tx of transactions) {
+      if (Array.isArray(tx.label)) {
+        for (const label of tx.label) {
+          labelSet.add(label.toLowerCase());
+        }
       }
+    }
+
+    const uniqueLabels = Array.from(labelSet);
+    if (!uniqueLabels.length) return;
+
+    // 2. Fetch existing labels from DB
+    const existingLabels = await Labels.find({
+      createdBy: userId,
+      labelName: { $in: uniqueLabels },
+    }).lean();
+
+    const existingLabelNames = new Set(
+      existingLabels.map((label) => label.labelName.toLowerCase())
+    );
+
+    // 3. Find new labels not in DB
+    const newLabels = uniqueLabels.filter((label) => !existingLabelNames.has(label));
+
+    if (newLabels.length > 0) {
+      const operations = newLabels.map((labelName) => ({
+        updateOne: {
+          filter: { labelName, createdBy: userId },
+          update: {
+            $setOnInsert: {
+              labelName,
+              createdBy: userId,
+            },
+          },
+          upsert: true,
+        },
+      }));
+
+      await Labels.bulkWrite(operations);
     }
   };
 
@@ -117,18 +133,17 @@ class TransactionLogsService {
   }
 
   async fetchTransactionLogs(
-    status: string,
     page: number,
     limit: number,
-    amount: string,
-    dateFrom: string,
-    dateTo: string,
-    bankName: string,
-    transactionType: string,
-    type: string,
-    labels: string,
-    category: string,
-    keyword: string,
+    amount?: string,
+    dateFrom?: string,
+    dateTo?: string,
+    bankName?: string,
+    transactionType?: string,
+    type?: string,
+    labels?: string,
+    category?: string,
+    keyword?: string,
     uploadKey?: string
   ) {
     const query: PipelineStage[] = [];
@@ -146,14 +161,11 @@ class TransactionLogsService {
     if (labels && labels.length > 0) matchQuery.label = { $in: labels };
     if (category && category.length > 0) matchQuery.category = { $in: category };
 
-    if (dateFrom) {
-      const startDate = new Date(dateFrom);
-      matchQuery.transactionDate = { $gte: startDate };
-    }
+    if (dateFrom || dateTo) {
+      matchQuery.transactionDate = {};
+      if (dateFrom) matchQuery.transactionDate.$gte = new Date(dateFrom);
 
-    if (dateTo) {
-      const endDate = new Date(dateTo);
-      matchQuery.transactionDate = { $lte: endDate };
+      if (dateTo) matchQuery.transactionDate.$lte = new Date(dateTo);
     }
 
     if (keyword && keyword.length > 0) {
@@ -166,15 +178,7 @@ class TransactionLogsService {
       ];
     }
     query.push({ $match: matchQuery });
-    query.push({
-      $addFields: {
-        convertedTransactionDate: {
-          $dateFromString: { dateString: '$transactionDate', format: '%d/%m/%Y' },
-        },
-      },
-    });
-    query.push({ $sort: { convertedTransactionDate: -1 } });
-    query.push({ $project: { convertedTransactionDate: 0 } }); // Optional: Remove the temporary converted date field
+    query.push({ $sort: { transactionDate: -1 } });
 
     const results = await pagination.add(TransactionLogs, query, page, limit);
     return results;
@@ -227,7 +231,7 @@ class TransactionLogsService {
 
     if (transactionLog.label && transactionLog.label.length > 0) {
       // Insert unique labels into the Labels collection use addtoSet
-      await this.upsertLabels(transactionLog, this.userId);
+      await this.upsertLabels([transactionLog], this.userId);
     }
 
     if (transactionLog.category && transactionLog.category.length > 0) {
@@ -262,6 +266,30 @@ class TransactionLogsService {
     return updatedTransaction;
   }
 
+  async syncTransactionsWithDB(transactions: ITransactionLogs[], page: number, limit: number) {
+    if (!transactions.length) throw new CustomError('No transactions found');
+    await this.upsertLabels(transactions, this.userId);
+
+    // 2. Prepare transaction upserts
+    const txOperations = transactions.map((tx) => ({
+      updateOne: {
+        filter: { _id: tx._id, userId: this.userId },
+        update: {
+          $set: {
+            ...tx,
+            userId: this.userId,
+          },
+        },
+        upsert: true,
+      },
+    }));
+
+    const updatedTransactions = await TransactionLogs.bulkWrite(txOperations);
+    if (!updatedTransactions)
+      throw new CustomError('Something went wrong while syncing transactions');
+    else return await this.fetchTransactionLogs(page, limit);
+  }
+
   async listLabelsService() {
     const labels = await Labels.find({ createdBy: this.userId });
     return labels;
@@ -282,6 +310,7 @@ class TransactionLogsService {
   async addCashMemoService(transaction: ITransactionLogs) {
     const newTransaction = new TransactionLogs({
       ...transaction,
+      transactionDate: dayjs(transaction.transactionDate, 'DD/MM/YYYY').toDate(),
       userId: this.userId,
     });
 

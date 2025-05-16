@@ -60,4 +60,10 @@ transactionLogsRoute.post(
   transactionLogsController.addCashMemo
 );
 
+transactionLogsRoute.put(
+  '/sync-transactions',
+  authHandler.userAccess,
+  transactionLogsController.syncMultipleTransactions
+);
+
 export { transactionLogsRoute };

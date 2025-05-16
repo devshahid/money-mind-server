@@ -14,7 +14,7 @@ export interface ITransactionPayload {
 export interface ITransactionLogs extends Document {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
-  transactionDate: string;
+  transactionDate: Date;
   narration: string;
   notes: string;
   category: string;
@@ -35,7 +35,7 @@ const transactionLogsSchema = new Schema<ITransactionLogs>(
       ref: 'User',
       required: true,
     },
-    transactionDate: { type: String },
+    transactionDate: { type: Date },
     narration: { type: String },
     notes: { type: String },
     category: { type: String },
