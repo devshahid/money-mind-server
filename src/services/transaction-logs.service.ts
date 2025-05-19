@@ -90,6 +90,12 @@ class TransactionLogsService {
     }
   };
 
+  private cleanAmount = (amount?: string | number): number => {
+    if (!amount) return 0;
+    const numeric = amount.toString().replace(/[^0-9.-]+/g, ''); // removes commas, spaces, etc.
+    return parseFloat(numeric) || 0;
+  };
+
   async uploadLogsFromFile(logs: ITransactionPayload[], bankName: string) {
     const hashMappedLogs = logs.map((log) => ({
       ...log,
@@ -110,18 +116,22 @@ class TransactionLogsService {
     if (uniqueLogs.length > 0) {
       const uniqueKey = uuidv4();
       const response = await TransactionLogs.insertMany(
-        uniqueLogs.map((log) => ({
-          userId: this.userId,
-          transactionDate: common.parseFlexibleDate(log.date),
-          narration: log.narration,
-          amount:
-            log.withdrawlAmount?.toString().length > 0 ? log.withdrawlAmount : log.depositAmount,
-          uploadKey: uniqueKey,
-          isCredit: log.withdrawlAmount?.toString().length > 0 ? false : true,
-          isCash: log.isCash ?? false,
-          bankName: bankName,
-          hashMap: log.hashMap,
-        }))
+        uniqueLogs.map((log) => {
+          const isCredit = !(log.withdrawlAmount?.toString().trim().length > 0);
+          const rawAmount = isCredit ? log.depositAmount : log.withdrawlAmount;
+
+          return {
+            userId: this.userId,
+            transactionDate: common.parseFlexibleDate(log.date),
+            narration: log.narration,
+            amount: this.cleanAmount(rawAmount),
+            uploadKey: uniqueKey,
+            isCredit: log.withdrawlAmount?.toString().length > 0 ? false : true,
+            isCash: log.isCash ?? false,
+            bankName: bankName,
+            hashMap: log.hashMap,
+          };
+        })
       );
       console.log(response);
     }
@@ -301,9 +311,9 @@ class TransactionLogsService {
   }
 
   async deleteAllTransactionsService() {
-    // await Category.deleteMany({ createdBy: this.userId });
-    // await Labels.deleteMany({ createdBy: this.userId });
-    // await TransactionLogs.deleteMany({ userId: this.userId });
+    await Category.deleteMany({ createdBy: this.userId });
+    await Labels.deleteMany({ createdBy: this.userId });
+    await TransactionLogs.deleteMany({ userId: this.userId });
     return 'Logs deleted successfully';
   }
 
