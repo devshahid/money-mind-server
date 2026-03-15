@@ -30,7 +30,7 @@ class ExpenseController extends ResponseHandler {
   removeItemsFromCategory = asyncHandler(async (req: CustomRequest, res: Response) => {
     const { categoryId, itemId } = req.body;
     const expenseService = new ExpenseService();
-    const result = await expenseService.removeItemsFromCategoryService(
+    const result: object = await expenseService.removeItemsFromCategoryService(
       categoryId,
       itemId,
       req.user?._id
@@ -41,7 +41,7 @@ class ExpenseController extends ResponseHandler {
   deleteCategory = asyncHandler(async (req: CustomRequest, res: Response) => {
     const { categoryId } = req.params;
     const expenseService = new ExpenseService();
-    const result = await expenseService.deleteCategoryService(categoryId, req.user?._id);
+    const result = await expenseService.deleteCategoryService(categoryId as string, req.user?._id);
     await this.sendResponse(result, res);
   });
 

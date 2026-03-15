@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Model, Document, PipelineStage } from 'mongoose';
 
 class Pagination {
@@ -26,8 +27,8 @@ class Pagination {
     return (page - 1) * limit;
   };
 
-  private recordCount = async <T extends Document>(
-    model: Model<T>,
+  private recordCount = async (
+    model: Model<any>,
     query: PipelineStage[]
   ): Promise<{ recordCount: number }[]> => {
     query.push({

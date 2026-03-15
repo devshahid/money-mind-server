@@ -22,7 +22,7 @@ class DebtController extends ResponseHandler {
   getDebt = asyncHandler(async (req: CustomRequest, res: Response) => {
     const { debtId } = req.params;
     const debtService = new DebtService();
-    const response = await debtService.getDebtService(debtId, req.user?._id);
+    const response = await debtService.getDebtService(debtId as string, req.user?._id);
     await this.sendResponse(response, res);
   });
 
@@ -35,7 +35,7 @@ class DebtController extends ResponseHandler {
   deleteDebt = asyncHandler(async (req: CustomRequest, res: Response) => {
     const { debtId } = req.params;
     const debtService = new DebtService();
-    const response = await debtService.removeDebtService(debtId, req.user?._id);
+    const response = await debtService.removeDebtService(debtId as string, req.user?._id);
     await this.sendResponse(response, res);
   });
 }

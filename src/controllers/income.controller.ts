@@ -15,7 +15,7 @@ class IncomeController extends ResponseHandler {
   getIncome = asyncHandler(async (req: CustomRequest, res: Response) => {
     const { incomeId } = req.params;
     const incomeService = new IncomeService();
-    const response = await incomeService.getIncomeService(incomeId, req.user?._id);
+    const response = await incomeService.getIncomeService(incomeId as string, req.user?._id);
     await this.sendResponse(response, res);
   });
 
@@ -39,7 +39,7 @@ class IncomeController extends ResponseHandler {
   deleteIncome = asyncHandler(async (req: CustomRequest, res: Response) => {
     const { incomeId } = req.params;
     const incomeService = new IncomeService();
-    const response = await incomeService.deleteIncomeService(incomeId, req.user?._id);
+    const response = await incomeService.deleteIncomeService(incomeId as string, req.user?._id);
     await this.sendResponse(response, res);
   });
 }

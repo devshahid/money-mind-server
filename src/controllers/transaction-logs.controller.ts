@@ -67,7 +67,7 @@ class TransactionLogsController extends ResponseHandler {
     const { id } = req.params;
     if (!req.user?._id) throw new CustomError('Please login first!!');
     const transactionLogsService = new TransactionLogsService(req.user?._id);
-    const response = await transactionLogsService.updateSingleLog(id, req.body);
+    const response = await transactionLogsService.updateSingleLog(id as string, req.body);
     await this.sendResponse(response, res);
   });
 

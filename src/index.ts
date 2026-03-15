@@ -14,9 +14,7 @@ const port = process.env.PORT || 8000;
 async function initializeApp() {
   try {
     /* Connecting Database */
-    if (process.env.ENVIRONMENT === 'dev' && process.env.SERVER === 'local') {
-      await connectDb();
-    }
+    await connectDb();
 
     /* Starting app on env port when database connected successfully */
     app.listen(port, () => {
