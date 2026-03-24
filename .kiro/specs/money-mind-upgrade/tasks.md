@@ -31,7 +31,7 @@ Foundational work completed as part of the initial upgrade. Each feature module 
 ## Remaining Features (tracked in separate specs)
 
 - Debt Management → `.kiro/specs/debt-management/`
-- Goals Module → to be created
-- Budgets Module → to be created
-- Analytics Module → to be created
-- AI Module → to be created
+- Goals Module → `.kiro/specs/goals-module/`
+- Budget Management → `.kiro/specs/budget-management/`
+- Financial Analytics → `.kiro/specs/financial-analytics/`
+- AI Suggestions → `.kiro/specs/ai-suggestions/`

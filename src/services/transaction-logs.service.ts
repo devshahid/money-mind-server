@@ -273,24 +273,20 @@ class TransactionLogsService {
       userId: this.userId,
     });
     if (!transactionLog) {
-      throw new CustomError('Transaction log not found.', 404);
+      throw new CustomError('Transaction log not found.');
     }
 
-    if (transactionLog.label && transactionLog.label.length > 0) {
-      // Insert unique labels into the Labels collection use addtoSet
-      await this.upsertLabels([transactionLog], this.userId);
+    if (transaction.label && transaction.label.length > 0) {
+      // Insert unique labels into the Labels collection
+      await this.upsertLabels([transaction], this.userId);
     }
 
-    if (transactionLog.category && transactionLog.category.length > 0) {
+    if (transaction.category && transaction.category.length > 0) {
       // Insert unique categories into the Category collection
-      const categories = await Category.find({
-        categoryName: { $in: transactionLog.category.toLocaleLowerCase() },
-      });
-      if (categories.length === 0) {
-        await Category.create({
-          categoryName: transactionLog.category.toLocaleLowerCase(),
-          createdBy: this.userId,
-        });
+      const categoryName = transaction.category.toLocaleLowerCase();
+      const existing = await Category.findOne({ categoryName, createdBy: this.userId });
+      if (!existing) {
+        await Category.create({ categoryName, createdBy: this.userId });
       }
     }
 
@@ -359,6 +355,7 @@ class TransactionLogsService {
       ...transaction,
       transactionDate: dayjs(transaction.transactionDate, 'DD/MM/YYYY').toDate(),
       userId: this.userId,
+      isCash: true,
     });
 
     const loggedTransaction = await newTransaction.save();
