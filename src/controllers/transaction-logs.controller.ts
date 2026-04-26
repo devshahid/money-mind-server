@@ -14,6 +14,14 @@ class TransactionLogsController extends ResponseHandler {
     await this.sendResponse(response, res);
   });
 
+  previewUpload = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { rows, bankName } = req.body;
+    if (!req.user?._id) throw new CustomError('Please login first!!');
+    const transactionLogsService = new TransactionLogsService(req.user?._id);
+    const response = await transactionLogsService.previewUploadFromFile(rows, bankName);
+    await this.sendResponse(response, res);
+  });
+
   fetchTransactions = asyncHandler(async (req: CustomRequest, res: Response) => {
     const {
       uploadKey,

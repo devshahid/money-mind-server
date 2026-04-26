@@ -13,6 +13,12 @@ transactionLogsRoute.post(
 );
 
 transactionLogsRoute.post(
+  '/preview-upload',
+  authHandler.userAccess,
+  transactionLogsController.previewUpload
+);
+
+transactionLogsRoute.post(
   '/list-transactions',
   authHandler.userAccess,
   transactionLogsController.fetchTransactions

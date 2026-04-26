@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Enforce Integration Test Pattern",
+  "description": "When a new integration test file is created, verify it follows the project's integration test conventions: supertest + mocked auth/mongoose/service pattern, nested describe blocks per endpoint, 401/400/404 coverage.",
+  "version": "1",
+  "when": {
+    "type": "fileCreated",
+    "patterns": [
+      "**/*.intg.spec.ts"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A new integration test file was created. Review it against the integration test conventions in .kiro/steering/integration-tests.md. Verify:\n1. All 3 required mocks are present at the top (auth middleware, mongoose session, service layer) BEFORE the app import\n2. Uses supertest with request(app) for HTTP calls\n3. Uses nested describe blocks per endpoint (HTTP_METHOD /api/v1/route)\n4. Each endpoint has: happy path test, auth enforcement test (401 without accessToken), and error tests (400/404)\n5. Uses .set('accessToken', 'valid-token') for authenticated requests\n6. Assertions use res.body.output for success and res.body.message for errors\n7. Uses section comment separators between endpoint blocks\nIf any convention is missing, fix it automatically."
+  }
+}

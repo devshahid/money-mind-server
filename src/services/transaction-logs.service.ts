@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import { CustomError } from '../core/ApiError';
+import { ClientError, CustomError } from '../core/ApiError';
 import { Category } from '../models/category.model';
 import { Labels } from '../models/labels.model';
 import {
@@ -97,6 +97,13 @@ class TransactionLogsService {
   };
 
   async uploadLogsFromFile(logs: ITransactionPayload[], bankName: string) {
+    if (!Array.isArray(logs) || logs.length === 0) {
+      throw new ClientError('Rows array is required and must not be empty.');
+    }
+    if (!bankName || typeof bankName !== 'string' || bankName.trim().length === 0) {
+      throw new ClientError('Bank name is required and must be a non-empty string.');
+    }
+
     const hashMappedLogs = logs.map((log) => ({
       ...log,
       hashMap: this.createHashMap(log),
@@ -113,9 +120,11 @@ class TransactionLogsService {
 
     const uniqueLogs = hashMappedLogs.filter((log) => !existingHashSet.has(log.hashMap));
 
+    let uploadKey: string | null = null;
+
     if (uniqueLogs.length > 0) {
-      const uniqueKey = uuidv4();
-      const response = await TransactionLogs.insertMany(
+      uploadKey = uuidv4();
+      await TransactionLogs.insertMany(
         uniqueLogs.map((log) => {
           const isCredit = !(log.withdrawlAmount?.toString().trim().length > 0);
           const rawAmount = isCredit ? log.depositAmount : log.withdrawlAmount;
@@ -125,7 +134,7 @@ class TransactionLogsService {
             transactionDate: common.parseFlexibleDate(log.date),
             narration: log.narration,
             amount: this.cleanAmount(rawAmount),
-            uploadKey: uniqueKey,
+            uploadKey,
             isCredit: log.withdrawlAmount?.toString().length > 0 ? false : true,
             isCash: log.isCash ?? false,
             bankName: bankName,
@@ -133,13 +142,41 @@ class TransactionLogsService {
           };
         })
       );
-      console.log(response);
     }
 
     return {
       inserted: uniqueLogs.length,
       skipped: logs.length - uniqueLogs.length,
+      uploadKey,
     };
+  }
+
+  async previewUploadFromFile(rows: ITransactionPayload[], bankName: string) {
+    if (!Array.isArray(rows) || rows.length === 0) {
+      throw new ClientError('Rows array is required and must not be empty.');
+    }
+    if (!bankName || typeof bankName !== 'string' || bankName.trim().length === 0) {
+      throw new ClientError('Bank name is required and must be a non-empty string.');
+    }
+
+    const hashMappedRows = rows.map((row) => ({
+      ...row,
+      hashMap: this.createHashMap(row),
+    }));
+
+    const incomingHashes = hashMappedRows.map((row) => row.hashMap);
+
+    const duplicates = await TransactionLogs.find({
+      userId: this.userId,
+      hashMap: { $in: incomingHashes },
+    }).select('hashMap');
+
+    const existingHashSet = new Set(duplicates.map((dup) => dup.hashMap));
+
+    const toInsert = hashMappedRows.filter((row) => !existingHashSet.has(row.hashMap));
+    const toSkip = hashMappedRows.filter((row) => existingHashSet.has(row.hashMap));
+
+    return { toInsert, toSkip };
   }
 
   async fetchTransactionLogs(
@@ -236,24 +273,20 @@ class TransactionLogsService {
       userId: this.userId,
     });
     if (!transactionLog) {
-      throw new CustomError('Transaction log not found.', 404);
+      throw new CustomError('Transaction log not found.');
     }
 
-    if (transactionLog.label && transactionLog.label.length > 0) {
-      // Insert unique labels into the Labels collection use addtoSet
-      await this.upsertLabels([transactionLog], this.userId);
+    if (transaction.label && transaction.label.length > 0) {
+      // Insert unique labels into the Labels collection
+      await this.upsertLabels([transaction], this.userId);
     }
 
-    if (transactionLog.category && transactionLog.category.length > 0) {
+    if (transaction.category && transaction.category.length > 0) {
       // Insert unique categories into the Category collection
-      const categories = await Category.find({
-        categoryName: { $in: transactionLog.category.toLocaleLowerCase() },
-      });
-      if (categories.length === 0) {
-        await Category.create({
-          categoryName: transactionLog.category.toLocaleLowerCase(),
-          createdBy: this.userId,
-        });
+      const categoryName = transaction.category.toLocaleLowerCase();
+      const existing = await Category.findOne({ categoryName, createdBy: this.userId });
+      if (!existing) {
+        await Category.create({ categoryName, createdBy: this.userId });
       }
     }
 
@@ -322,6 +355,7 @@ class TransactionLogsService {
       ...transaction,
       transactionDate: dayjs(transaction.transactionDate, 'DD/MM/YYYY').toDate(),
       userId: this.userId,
+      isCash: true,
     });
 
     const loggedTransaction = await newTransaction.save();
