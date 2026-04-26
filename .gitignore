@@ -124,5 +124,3 @@ package-lock.json
 **/upload
 
 .env
-
-serverless.yml

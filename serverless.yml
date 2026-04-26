@@ -1,0 +1,54 @@
+app: money-mind-v1-apis
+service: money-mind-v1-apis
+
+provider:
+  name: aws
+  stage: prod
+  timeout: 20
+  region: ap-south-1
+  runtime: nodejs20.x
+  profile: money-mind-server
+  environment:
+    NODE_ENV: 'prod'
+    PORT: 8000
+    DB_NAME: ${ssm:/money-mind/prod/DB_NAME}
+    DB_URL: ${ssm:/money-mind/prod/DB_URL}
+    JWT_SECRET_KEY: ${ssm:/money-mind/prod/JWT_SECRET_KEY}
+    ENVIRONMENT: 'prod'
+    SERVER: 'deploy'
+
+functions:
+  management-api:
+    handler: dist/handler.debtmanagementapi
+    events:
+      - http:
+          path: /
+          method: ANY
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - Authorization
+              - Accept
+              - Origin
+              - Access-Control-Allow-Origin
+              - Access-Control-Allow-Headers
+              - acccessToken
+              - accesstoken
+            allowCredentials: false
+
+      - http:
+          path: /{proxy+}
+          method: ANY
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - Authorization
+              - Accept
+              - Origin
+              - Access-Control-Allow-Origin
+              - Access-Control-Allow-Headers
+              - acccessToken
+              - accesstoken
+            allowCredentials: false
