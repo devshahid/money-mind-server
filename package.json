@@ -15,7 +15,9 @@
     "check-eslint": "eslint src/**/*.ts",
     "fix-prettier": "npx prettier src/**/* --write",
     "deploy": "npm run build && serverless deploy",
-    "test": "jest --coverage"
+    "test": "jest --coverage",
+    "test:integration": "jest -c ./jest.intg.config.js --forceExit",
+    "test:unit": "jest"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx,json}": [
@@ -48,14 +50,18 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/mongoose": "^5.11.97",
     "@types/node": "^22.15.14",
+    "@types/supertest": "^7.2.0",
     "eslint": "^9.17.0",
     "globals": "^15.14.0",
     "husky": "^9.1.7",
+    "jest": "^30.3.0",
     "lint-staged": "^15.3.0",
     "module-alias": "^2.2.3",
     "nodemon": "^3.1.9",
     "prettier": "^3.4.2",
     "serverless-esbuild": "^1.55.0",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.9",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",

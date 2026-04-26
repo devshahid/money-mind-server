@@ -15,4 +15,10 @@ export default [
     },
     ignores: ['node_modules/', 'dist/'],
   },
+  {
+    files: ['**/*.test.ts', '**/*.spec.ts', '**/*.intg.spec.ts'],
+    languageOptions: {
+      globals: globals.jest,
+    },
+  },
 ];

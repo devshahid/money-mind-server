@@ -7,28 +7,28 @@ import { Response } from 'express';
 
 class TransactionGroupsController extends ResponseHandler {
   create = asyncHandler(async (req: CustomRequest, res: Response) => {
-    const { groupName, description } = req.body;
     if (!req.user?._id) throw new CustomError('Please login first!!');
+    const {
+      clientId,
+      name,
+      involvedParty,
+      members,
+      notes,
+      transactionIds,
+      splitType,
+      splitConfig,
+    } = req.body;
     const service = new TransactionGroupsService(req.user._id);
-    const response = await service.createGroup(groupName, description);
-    await this.sendResponse(response, res);
-  });
-
-  addTransactions = asyncHandler(async (req: CustomRequest, res: Response) => {
-    const id = req.params.id as string;
-    const { transactionIds } = req.body;
-    if (!req.user?._id) throw new CustomError('Please login first!!');
-    const service = new TransactionGroupsService(req.user._id);
-    const response = await service.addTransactions(id, transactionIds);
-    await this.sendResponse(response, res);
-  });
-
-  removeTransactions = asyncHandler(async (req: CustomRequest, res: Response) => {
-    const id = req.params.id as string;
-    const { transactionIds } = req.body;
-    if (!req.user?._id) throw new CustomError('Please login first!!');
-    const service = new TransactionGroupsService(req.user._id);
-    const response = await service.removeTransactions(id, transactionIds);
+    const response = await service.createGroup({
+      clientId,
+      name,
+      involvedParty,
+      members,
+      notes,
+      transactionIds,
+      splitType,
+      splitConfig,
+    });
     await this.sendResponse(response, res);
   });
 
@@ -49,10 +49,19 @@ class TransactionGroupsController extends ResponseHandler {
 
   update = asyncHandler(async (req: CustomRequest, res: Response) => {
     const id = req.params.id as string;
-    const { groupName, description } = req.body;
     if (!req.user?._id) throw new CustomError('Please login first!!');
+    const { name, involvedParty, members, notes, transactionIds, splitType, splitConfig } =
+      req.body;
     const service = new TransactionGroupsService(req.user._id);
-    const response = await service.updateGroup(id, { groupName, description });
+    const response = await service.updateGroup(id, {
+      name,
+      involvedParty,
+      members,
+      notes,
+      transactionIds,
+      splitType,
+      splitConfig,
+    });
     await this.sendResponse(response, res);
   });
 
@@ -61,6 +70,32 @@ class TransactionGroupsController extends ResponseHandler {
     if (!req.user?._id) throw new CustomError('Please login first!!');
     const service = new TransactionGroupsService(req.user._id);
     const response = await service.deleteGroup(id);
+    await this.sendResponse(response, res);
+  });
+
+  addTransactions = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const id = req.params.id as string;
+    const { transactionIds } = req.body;
+    if (!req.user?._id) throw new CustomError('Please login first!!');
+    const service = new TransactionGroupsService(req.user._id);
+    const response = await service.addTransactions(id, transactionIds);
+    await this.sendResponse(response, res);
+  });
+
+  removeTransaction = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const id = req.params.id as string;
+    const { transactionId } = req.body;
+    if (!req.user?._id) throw new CustomError('Please login first!!');
+    const service = new TransactionGroupsService(req.user._id);
+    const response = await service.removeTransaction(id, transactionId);
+    await this.sendResponse(response, res);
+  });
+
+  syncGroups = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { groups, deletedClientIds } = req.body;
+    if (!req.user?._id) throw new CustomError('Please login first!!');
+    const service = new TransactionGroupsService(req.user._id);
+    const response = await service.syncGroups(groups, deletedClientIds || []);
     await this.sendResponse(response, res);
   });
 }

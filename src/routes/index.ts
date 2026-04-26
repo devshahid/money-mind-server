@@ -5,6 +5,7 @@ import { debtRoute } from './debt.route';
 import { incomeRoute } from './income.route';
 import { transactionLogsRoute } from './transaction-logs.route';
 import { transactionGroupsRoute } from './transaction-groups.route';
+import { membersRoute } from './members.route';
 import { goalsRoute } from './goals.route';
 import { budgetsRoute } from './budgets.route';
 import { analyticsRoute } from './analytics.route';
@@ -22,6 +23,8 @@ router.use('/income', incomeRoute);
 router.use('/transaction-logs', transactionLogsRoute);
 
 router.use('/transaction-groups', transactionGroupsRoute);
+
+router.use('/members', membersRoute);
 
 router.use('/goals', goalsRoute);
 

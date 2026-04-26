@@ -1,44 +1,99 @@
 import mongoose, { Schema, model, Document, Types } from 'mongoose';
 
-export interface ITransactionGroup extends Document {
-  userId: Types.ObjectId;
-  groupName: string;
-  description?: string;
-  transactionIds: Types.ObjectId[];
-  totalAmount: number;
-  isCredit?: boolean;
+export interface IMember {
+  _id?: Types.ObjectId;
+  name: string;
+  share: number;
+  paid: number;
+  percentage: number;
 }
 
-const transactionGroupSchema = new Schema<ITransactionGroup>(
+export type SplitType =
+  | 'EQUAL_INCLUDE_PAYER'
+  | 'EQUAL_EXCLUDE_PAYER'
+  | 'CUSTOM_AMOUNTS'
+  | 'PERCENTAGE_SPLIT'
+  | 'LOAN'
+  | 'ITEMIZED';
+
+export interface ITransactionGroupModel extends Document {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  clientId: string;
+  name: string;
+  involvedParty: string;
+  members: IMember[];
+  notes: string;
+  transactionIds: string[];
+  splitType: SplitType;
+  splitConfig: Record<string, unknown> | null;
+}
+
+const transactionGroupSchema = new Schema<ITransactionGroupModel>(
   {
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
+      index: true,
     },
-    groupName: {
+    clientId: {
       type: String,
       required: true,
+      unique: true,
     },
-    description: {
+    name: {
       type: String,
+      required: true,
+      trim: true,
+    },
+    involvedParty: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    members: [
+      {
+        _id: { type: mongoose.Schema.Types.ObjectId, ref: 'SavedMember', required: false },
+        name: { type: String, required: true, trim: true },
+        share: { type: Number, default: 0, min: 0 },
+        paid: { type: Number, default: 0, min: 0 },
+        percentage: { type: Number, default: 0, min: 0, max: 100 },
+      },
+    ],
+    notes: {
+      type: String,
+      default: '',
     },
     transactionIds: [
       {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'TransactionLogs',
+        type: String,
       },
     ],
-    totalAmount: {
-      type: Number,
-      default: 0,
+    splitType: {
+      type: String,
+      enum: [
+        'EQUAL_INCLUDE_PAYER',
+        'EQUAL_EXCLUDE_PAYER',
+        'CUSTOM_AMOUNTS',
+        'PERCENTAGE_SPLIT',
+        'LOAN',
+        'ITEMIZED',
+      ],
+      default: 'EQUAL_INCLUDE_PAYER',
     },
-    isCredit: {
-      type: Boolean,
+    splitConfig: {
+      type: Schema.Types.Mixed,
+      default: null,
     },
   },
-  { timestamps: true, versionKey: false }
+  {
+    timestamps: true,
+    versionKey: false,
+  }
 );
 
-const TransactionGroup = model<ITransactionGroup>('TransactionGroup', transactionGroupSchema);
+transactionGroupSchema.index({ userId: 1, clientId: 1 }, { unique: true });
+
+const TransactionGroup = model<ITransactionGroupModel>('TransactionGroup', transactionGroupSchema);
 export { TransactionGroup };

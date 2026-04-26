@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Lint Integration Tests on Save",
+  "description": "When an integration test file is edited, run ESLint fix and then run the integration test suite to catch issues early.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "**/*.intg.spec.ts"
+    ]
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "npx eslint --fix ${file}"
+  }
+}
