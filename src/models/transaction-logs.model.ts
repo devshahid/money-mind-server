@@ -26,6 +26,9 @@ export interface ITransactionLogs extends Document {
   isCash: boolean;
   bankName: string;
   hashMap: string;
+  aiSuggested: boolean; // Flag to indicate AI suggested this category
+  aiConfidence: number; // AI confidence score (0-1)
+  aiConfirmed: boolean; // User confirmed AI suggestion
 }
 
 const transactionLogsSchema = new Schema<ITransactionLogs>(
@@ -47,6 +50,9 @@ const transactionLogsSchema = new Schema<ITransactionLogs>(
     isCash: { type: Boolean },
     bankName: { type: String },
     hashMap: { type: String },
+    aiSuggested: { type: Boolean, default: false },
+    aiConfidence: { type: Number, default: 0 },
+    aiConfirmed: { type: Boolean, default: false },
   },
   { timestamps: true, versionKey: false }
 );
