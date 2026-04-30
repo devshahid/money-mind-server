@@ -13,6 +13,9 @@ export interface IDebtDetails {
   partPayment: number;
   paymentDate: Date;
   lender: string;
+  emiType?: 'INTEREST_ONLY' | 'PRINCIPAL_AND_INTEREST'; // Type of EMI payment
+  principalComponent?: number; // Amount going towards principal
+  interestComponent?: number; // Amount going towards interest
 }
 export interface IDebtMdodel extends Document {
   _id: Types.ObjectId;
@@ -71,6 +74,19 @@ const debtSchema: Schema<IDebtMdodel> = new Schema(
       },
       lender: {
         type: String,
+      },
+      emiType: {
+        type: String,
+        enum: ['INTEREST_ONLY', 'PRINCIPAL_AND_INTEREST'],
+        default: 'PRINCIPAL_AND_INTEREST',
+      },
+      principalComponent: {
+        type: Number,
+        default: 0,
+      },
+      interestComponent: {
+        type: Number,
+        default: 0,
       },
     },
   },

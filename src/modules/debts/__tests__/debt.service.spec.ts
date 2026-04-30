@@ -4,10 +4,12 @@
 import { Types } from 'mongoose';
 import { DebtService } from '../debt.service';
 import { Debt, IDebtDetails } from '../models/debts.model';
+import { DebtPayment } from '../models/debt-payment.model';
 import { CustomError } from '../../../shared/core/ApiError';
 
 // Mock dependencies
 jest.mock('../models/debts.model');
+jest.mock('../models/debt-payment.model');
 jest.mock('../../../utils/common');
 
 describe('DebtService (Unit Tests)', () => {
@@ -129,7 +131,7 @@ describe('DebtService (Unit Tests)', () => {
       const result = await service.updateDebtService(debtId.toString(), updateData, mockUserId);
 
       expect(result).toBeDefined();
-      expect(result.debtDetails.remainingAmount).toBe(350000);
+      expect(result.remainingBalance).toBe(350000);
       expect(Debt.findOneAndUpdate).toHaveBeenCalledWith(
         { _id: debtId, userId: mockUserId },
         {
@@ -224,14 +226,25 @@ describe('DebtService (Unit Tests)', () => {
           debtName: 'Credit Card Debt',
           totalAmount: 50000,
           remainingAmount: 30000,
+          lender: 'HDFC Bank',
+          interestRate: 15,
+          startDate: new Date(),
+          expectedEndDate: new Date(),
+          monthlyExpectedEMI: 5000,
+          debtStatus: 'ACTIVE',
+          paymentDate: new Date(),
         },
+        createdAt: new Date(),
+        updatedAt: new Date(),
       };
 
       (Debt.findOne as jest.Mock).mockResolvedValue(mockDebt);
 
       const result = await service.getDebtService(debtId.toString(), mockUserId);
 
-      expect(result).toEqual(mockDebt);
+      expect(result.debtName).toBe('Credit Card Debt');
+      expect(result.principal).toBe(50000);
+      expect(result.remainingBalance).toBe(30000);
       expect(Debt.findOne).toHaveBeenCalledWith({ _id: undefined, userId: mockUserId });
     });
 
@@ -257,7 +270,16 @@ describe('DebtService (Unit Tests)', () => {
             debtName: 'Home Loan',
             totalAmount: 5000000,
             remainingAmount: 4500000,
+            lender: 'SBI',
+            interestRate: 8.5,
+            startDate: new Date(),
+            expectedEndDate: new Date(),
+            monthlyExpectedEMI: 40000,
+            debtStatus: 'ACTIVE',
+            paymentDate: new Date(),
           },
+          createdAt: new Date(),
+          updatedAt: new Date(),
         },
         {
           _id: new Types.ObjectId(),
@@ -266,7 +288,16 @@ describe('DebtService (Unit Tests)', () => {
             debtName: 'Car Loan',
             totalAmount: 800000,
             remainingAmount: 600000,
+            lender: 'HDFC',
+            interestRate: 9,
+            startDate: new Date(),
+            expectedEndDate: new Date(),
+            monthlyExpectedEMI: 15000,
+            debtStatus: 'ACTIVE',
+            paymentDate: new Date(),
           },
+          createdAt: new Date(),
+          updatedAt: new Date(),
         },
       ];
 
@@ -274,16 +305,11 @@ describe('DebtService (Unit Tests)', () => {
 
       const result = await service.listDebtService(mockUserId);
 
-      expect(result).toEqual(mockDebts);
       expect(result).toHaveLength(2);
+      expect(result[0].debtName).toBe('Home Loan');
+      expect(result[0].principal).toBe(5000000);
+      expect(result[1].debtName).toBe('Car Loan');
       expect(Debt.find).toHaveBeenCalledWith({ userId: mockUserId });
-    });
-
-    it('should throw error when no debts found', async () => {
-      (Debt.find as jest.Mock).mockResolvedValue(null);
-
-      await expect(service.listDebtService(mockUserId)).rejects.toThrow('No debts found');
-      await expect(service.listDebtService(mockUserId)).rejects.toThrow(CustomError);
     });
 
     it('should return empty array when user has no debts', async () => {
@@ -343,6 +369,349 @@ describe('DebtService (Unit Tests)', () => {
       await expect(service.removeDebtService(debtId.toString(), mockUserId)).rejects.toThrow(
         CustomError
       );
+    });
+  });
+
+  describe('recordPaymentService', () => {
+    it('should record payment and update remaining amount', async () => {
+      const debtId = new Types.ObjectId();
+      const mockDebt = {
+        _id: debtId,
+        userId: mockUserId,
+        debtDetails: {
+          debtName: 'Car Loan',
+          totalAmount: 500000,
+          remainingAmount: 400000,
+          debtStatus: 'ACTIVE',
+        },
+      };
+
+      (Debt.findOne as jest.Mock).mockResolvedValue(mockDebt);
+
+      const mockPayment = {
+        _id: new Types.ObjectId(),
+        userId: mockUserId,
+        debtId,
+        amount: 50000,
+        paymentDate: new Date(),
+      };
+
+      const mockSave = jest.fn().mockResolvedValue(mockPayment);
+      (DebtPayment as any).mockImplementation(() => ({
+        ...mockPayment,
+        save: mockSave,
+      }));
+
+      const updatedDebt = {
+        ...mockDebt,
+        debtDetails: {
+          ...mockDebt.debtDetails,
+          remainingAmount: 350000,
+        },
+      };
+
+      (Debt.findOneAndUpdate as jest.Mock).mockResolvedValue(updatedDebt);
+
+      const result = await service.recordPaymentService(
+        {
+          debtId: debtId.toString(),
+          amount: 50000,
+          paymentDate: new Date(),
+        },
+        mockUserId
+      );
+
+      expect(result.payment).toBeDefined();
+      expect(result.updatedDebt.remainingBalance).toBe(350000);
+      expect(mockSave).toHaveBeenCalled();
+    });
+
+    it('should mark debt as PAID when fully paid', async () => {
+      const debtId = new Types.ObjectId();
+      const mockDebt = {
+        _id: debtId,
+        userId: mockUserId,
+        debtDetails: {
+          debtName: 'Personal Loan',
+          totalAmount: 100000,
+          remainingAmount: 25000,
+          debtStatus: 'ACTIVE',
+        },
+      };
+
+      (Debt.findOne as jest.Mock).mockResolvedValue(mockDebt);
+
+      const mockPayment = {
+        _id: new Types.ObjectId(),
+        userId: mockUserId,
+        debtId,
+        amount: 25000,
+        paymentDate: new Date(),
+      };
+
+      const mockSave = jest.fn().mockResolvedValue(mockPayment);
+      (DebtPayment as any).mockImplementation(() => ({
+        ...mockPayment,
+        save: mockSave,
+      }));
+
+      const updatedDebt = {
+        ...mockDebt,
+        debtDetails: {
+          ...mockDebt.debtDetails,
+          remainingAmount: 0,
+          debtStatus: 'PAID',
+        },
+      };
+
+      (Debt.findOneAndUpdate as jest.Mock).mockResolvedValue(updatedDebt);
+
+      const result = await service.recordPaymentService(
+        {
+          debtId: debtId.toString(),
+          amount: 25000,
+          paymentDate: new Date(),
+        },
+        mockUserId
+      );
+
+      expect(result.updatedDebt.status).toBe('PAID');
+      expect(result.updatedDebt.remainingBalance).toBe(0);
+    });
+
+    it('should throw error when debt not found', async () => {
+      (Debt.findOne as jest.Mock).mockResolvedValue(null);
+
+      await expect(
+        service.recordPaymentService(
+          {
+            debtId: new Types.ObjectId().toString(),
+            amount: 10000,
+            paymentDate: new Date(),
+          },
+          mockUserId
+        )
+      ).rejects.toThrow('Debt not found');
+    });
+
+    it('should throw error when payment amount is invalid', async () => {
+      const debtId = new Types.ObjectId();
+      const mockDebt = {
+        _id: debtId,
+        userId: mockUserId,
+        debtDetails: {
+          remainingAmount: 100000,
+        },
+      };
+
+      (Debt.findOne as jest.Mock).mockResolvedValue(mockDebt);
+
+      await expect(
+        service.recordPaymentService(
+          {
+            debtId: debtId.toString(),
+            amount: 0,
+            paymentDate: new Date(),
+          },
+          mockUserId
+        )
+      ).rejects.toThrow('Payment amount must be greater than 0');
+
+      await expect(
+        service.recordPaymentService(
+          {
+            debtId: debtId.toString(),
+            amount: 150000,
+            paymentDate: new Date(),
+          },
+          mockUserId
+        )
+      ).rejects.toThrow('Payment amount cannot exceed remaining amount');
+    });
+  });
+
+  describe('getPaymentHistoryService', () => {
+    it('should return payment history for a debt', async () => {
+      const debtId = new Types.ObjectId();
+      const mockDebt = {
+        _id: debtId,
+        userId: mockUserId,
+        debtDetails: {
+          debtName: 'Home Loan',
+        },
+      };
+
+      (Debt.findOne as jest.Mock).mockResolvedValue(mockDebt);
+
+      const mockPayments = [
+        {
+          _id: new Types.ObjectId(),
+          debtId,
+          amount: 50000,
+          paymentDate: new Date('2024-01-15'),
+        },
+        {
+          _id: new Types.ObjectId(),
+          debtId,
+          amount: 50000,
+          paymentDate: new Date('2024-02-15'),
+        },
+      ];
+
+      const mockFind = jest.fn().mockReturnValue({
+        sort: jest.fn().mockReturnValue({
+          populate: jest.fn().mockResolvedValue(mockPayments),
+        }),
+      });
+
+      (DebtPayment.find as jest.Mock) = mockFind;
+
+      const result = await service.getPaymentHistoryService(debtId.toString(), mockUserId);
+
+      expect(result.payments).toHaveLength(2);
+      expect(result.totalPaid).toBe(100000);
+      expect(result.paymentCount).toBe(2);
+    });
+
+    it('should throw error when debt not found', async () => {
+      (Debt.findOne as jest.Mock).mockResolvedValue(null);
+
+      await expect(
+        service.getPaymentHistoryService(new Types.ObjectId().toString(), mockUserId)
+      ).rejects.toThrow('Debt not found');
+    });
+  });
+
+  describe('getPayoffProjectionService', () => {
+    it('should calculate payoff projection correctly', async () => {
+      const debtId = new Types.ObjectId();
+      const mockDebt = {
+        _id: debtId,
+        userId: mockUserId,
+        debtDetails: {
+          debtName: 'Personal Loan',
+          remainingAmount: 100000,
+          interestRate: 12,
+          monthlyExpectedEMI: 10000,
+        },
+      };
+
+      (Debt.findOne as jest.Mock).mockResolvedValue(mockDebt);
+
+      const result = await service.getPayoffProjectionService(debtId.toString(), mockUserId);
+
+      expect(result.monthlyPayment).toBe(10000);
+      expect(result.totalMonths).toBeGreaterThan(0);
+      expect(result.totalInterest).toBeGreaterThan(0);
+      expect(result.monthlyBreakdown).toBeDefined();
+      expect(result.payoffDate).toBeInstanceOf(Date);
+    });
+
+    it('should handle zero interest rate', async () => {
+      const debtId = new Types.ObjectId();
+      const mockDebt = {
+        _id: debtId,
+        userId: mockUserId,
+        debtDetails: {
+          debtName: 'Interest-free Loan',
+          remainingAmount: 100000,
+          interestRate: 0,
+          monthlyExpectedEMI: 10000,
+        },
+      };
+
+      (Debt.findOne as jest.Mock).mockResolvedValue(mockDebt);
+
+      const result = await service.getPayoffProjectionService(debtId.toString(), mockUserId);
+
+      expect(result.monthlyPayment).toBe(10000);
+      expect(result.totalMonths).toBe(10);
+      expect(result.totalInterest).toBe(0);
+    });
+
+    it('should throw error when debt not found', async () => {
+      (Debt.findOne as jest.Mock).mockResolvedValue(null);
+
+      await expect(
+        service.getPayoffProjectionService(new Types.ObjectId().toString(), mockUserId)
+      ).rejects.toThrow('Debt not found');
+    });
+  });
+
+  describe('getDebtSummaryService', () => {
+    it('should calculate comprehensive debt summary', async () => {
+      const mockDebts = [
+        {
+          _id: new Types.ObjectId(),
+          userId: mockUserId,
+          debtDetails: {
+            debtName: 'Home Loan',
+            totalAmount: 5000000,
+            remainingAmount: 4500000,
+            monthlyExpectedEMI: 40000,
+            debtStatus: 'ACTIVE',
+            interestRate: 8.5,
+          },
+        },
+        {
+          _id: new Types.ObjectId(),
+          userId: mockUserId,
+          debtDetails: {
+            debtName: 'Car Loan',
+            totalAmount: 800000,
+            remainingAmount: 0,
+            monthlyExpectedEMI: 15000,
+            debtStatus: 'PAID',
+            interestRate: 7.0,
+          },
+        },
+        {
+          _id: new Types.ObjectId(),
+          userId: mockUserId,
+          debtDetails: {
+            debtName: 'Personal Loan',
+            totalAmount: 200000,
+            remainingAmount: 100000,
+            monthlyExpectedEMI: 5000,
+            debtStatus: 'ACTIVE',
+            interestRate: 12.0,
+          },
+        },
+      ];
+
+      (Debt.find as jest.Mock).mockResolvedValue(mockDebts);
+
+      const result = await service.getDebtSummaryService(mockUserId);
+
+      expect(result.totalDebt).toBe(6000000);
+      expect(result.totalRemaining).toBe(4600000);
+      expect(result.totalMonthlyEMI).toBe(45000); // Only active debts
+      expect(result.totalPaid).toBe(1400000);
+      expect(result.activeDebtsCount).toBe(2);
+      expect(result.paidDebtsCount).toBe(1);
+      expect(result.overallProgress).toBeCloseTo(23.33, 2);
+      expect(result.highestInterestDebt).toEqual({
+        debtName: 'Personal Loan',
+        interestRate: 12.0,
+        remaining: 100000,
+      });
+      expect(result.debts).toHaveLength(3);
+    });
+
+    it('should return empty summary when no debts', async () => {
+      (Debt.find as jest.Mock).mockResolvedValue([]);
+
+      const result = await service.getDebtSummaryService(mockUserId);
+
+      expect(result.totalDebt).toBe(0);
+      expect(result.totalRemaining).toBe(0);
+      expect(result.totalMonthlyEMI).toBe(0);
+      expect(result.totalPaid).toBe(0);
+      expect(result.activeDebtsCount).toBe(0);
+      expect(result.paidDebtsCount).toBe(0);
+      expect(result.overallProgress).toBe(0);
+      expect(result.highestInterestDebt).toBeNull();
+      expect(result.debts).toHaveLength(0);
     });
   });
 });

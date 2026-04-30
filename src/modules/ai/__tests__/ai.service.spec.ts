@@ -286,19 +286,26 @@ describe('AIService (Unit Tests)', () => {
       // Arrange
       const mockLLMResponse = {
         content: JSON.stringify({
-          strategy: 'Avalanche method recommended',
-          recommendations: [
+          recommendedMethod: 'AVALANCHE',
+          strategyExplanation: 'Avalanche method recommended - pay off high-interest debt first',
+          priorityOrder: [
+            {
+              debtName: 'Credit Card',
+              order: 1,
+              reason: 'Highest interest rate (18%)',
+            },
+          ],
+          monthlyRecommendation: {
+            minimumPayments: 150,
+            extraPaymentSuggestion: 500,
+            totalMonthly: 650,
+          },
+          potentialSavings: 1000,
+          estimatedPayoffTimeline: '24 months with current income',
+          tips: [
             'Pay off high-interest debt first',
             'Consider debt consolidation',
             'Build emergency fund',
-          ],
-          payoffTimeline: '24 months with current income',
-          priorityDebts: [
-            {
-              debtName: 'Credit Card',
-              priority: 1,
-              reasoning: 'Highest interest rate (18%)',
-            },
           ],
         }),
       };
@@ -314,6 +321,7 @@ describe('AIService (Unit Tests)', () => {
         monthlyExpenses: 3000,
         debts: [
           {
+            debtId: 'debt123',
             debtName: 'Credit Card',
             totalAmount: 5000,
             remainingAmount: 4500,
@@ -328,11 +336,10 @@ describe('AIService (Unit Tests)', () => {
 
       // Assert
       expect(result).toBeDefined();
-      expect(result.totalDebt).toBe(4500);
-      expect(result.monthlyIncome).toBe(5000);
-      expect(result.availableForDebt).toBe(2000); // 5000 - 3000
-      expect(result.strategy).toContain('Avalanche');
-      expect(result.recommendations).toHaveLength(3);
+      expect(result.recommendedMethod).toBe('AVALANCHE');
+      expect(result.strategyExplanation).toContain('Avalanche');
+      expect(result.monthlyRecommendation.minimumPayments).toBe(150);
+      expect(result.tips).toHaveLength(3);
       expect(mockInvoke).toHaveBeenCalled();
     });
 
@@ -340,10 +347,17 @@ describe('AIService (Unit Tests)', () => {
       // Arrange
       const mockLLMResponse = {
         content: JSON.stringify({
-          strategy: 'No active debts',
-          recommendations: ['Focus on savings', 'Build emergency fund'],
-          payoffTimeline: 'N/A',
-          priorityDebts: [],
+          recommendedMethod: 'AVALANCHE',
+          strategyExplanation: 'No active debts',
+          priorityOrder: [],
+          monthlyRecommendation: {
+            minimumPayments: 0,
+            extraPaymentSuggestion: 0,
+            totalMonthly: 0,
+          },
+          potentialSavings: 0,
+          estimatedPayoffTimeline: 'N/A',
+          tips: ['Focus on savings', 'Build emergency fund'],
         }),
       };
 
@@ -363,8 +377,8 @@ describe('AIService (Unit Tests)', () => {
       const result = await aiService.analyzeDebtStrategy(debtData);
 
       // Assert
-      expect(result.totalDebt).toBe(0);
-      expect(result.strategy).toBeDefined();
+      expect(result.recommendedMethod).toBeDefined();
+      expect(result.strategyExplanation).toBeDefined();
     });
   });
 

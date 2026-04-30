@@ -60,18 +60,22 @@ export interface BatchCategorizationResult {
 }
 
 export interface DebtStrategyResult {
-  totalDebt: number;
-  monthlyIncome: number;
-  totalEMI: number;
-  availableForDebt: number;
-  strategy: string;
-  recommendations: string[];
-  payoffTimeline: string;
-  priorityDebts: Array<{
+  recommendedMethod: 'AVALANCHE' | 'SNOWBALL';
+  priorityOrder: Array<{
+    debtId: string;
     debtName: string;
-    priority: number;
-    reasoning: string;
+    reason: string;
+    order: number;
   }>;
+  estimatedPayoffTimeline: string;
+  potentialSavings: number;
+  monthlyRecommendation: {
+    minimumPayments: number;
+    extraPaymentSuggestion: number;
+    totalMonthly: number;
+  };
+  strategyExplanation: string;
+  tips: string[];
 }
 
 export interface BudgetRecommendation {
@@ -264,11 +268,15 @@ Common patterns to recognize:
   async analyzeDebtStrategy(data: {
     monthlyIncome: number;
     debts: Array<{
+      debtId?: string;
       debtName: string;
       totalAmount: number;
       remainingAmount: number;
       monthlyEMI: number;
       interestRate: number;
+      emiType?: 'INTEREST_ONLY' | 'PRINCIPAL_AND_INTEREST';
+      principalComponent?: number;
+      interestComponent?: number;
     }>;
     monthlyExpenses: number;
   }): Promise<DebtStrategyResult> {
@@ -291,38 +299,54 @@ Financial Situation:
 Debts:
 {debts}
 
-Task:
-1. Prioritize debts (highest interest first, or snowball method)
-2. Suggest a realistic debt-free strategy
-3. Calculate approximate payoff timeline
-4. Provide actionable recommendations
+IMPORTANT NOTES:
+- Interest-Only loans: Principal remains constant, only interest is paid. These are high-priority to convert or pay off.
+- Principal+Interest loans: Principal reduces each month with standard EMI payments.
+- Prioritize converting interest-only loans to principal+interest or paying them off entirely.
 
-Focus on:
-- Debt avalanche (high interest first) vs snowball (smallest first)
-- Extra payment suggestions
-- Budget optimization
-- Emergency fund considerations
+Task:
+1. Choose between AVALANCHE (pay high interest first) or SNOWBALL (pay smallest debt first) method
+2. Give SPECIAL PRIORITY to interest-only loans as they don't reduce principal
+3. Prioritize debts according to the chosen method
+4. Calculate potential interest savings
+5. Suggest extra monthly payment amount (if budget allows)
+6. Estimate debt-free timeline (accounting for interest-only loans)
+7. Provide actionable tips (especially for interest-only loans)
 
 Provide a comprehensive strategy in JSON format:
 {{
-  "strategy": "Overall strategy summary",
-  "recommendations": ["recommendation1", "recommendation2", ...],
-  "payoffTimeline": "Estimated timeline to be debt-free",
-  "priorityDebts": [
+  "recommendedMethod": "AVALANCHE" or "SNOWBALL",
+  "strategyExplanation": "Brief explanation of why this method was chosen, mention interest-only loans if any",
+  "priorityOrder": [
     {{
       "debtName": "name",
-      "priority": 1,
-      "reasoning": "why this debt should be prioritized"
+      "order": 1,
+      "reason": "why this debt should be paid first (mention if interest-only)"
     }}
-  ]
+  ],
+  "monthlyRecommendation": {{
+    "minimumPayments": {totalEMI},
+    "extraPaymentSuggestion": <amount user can pay extra>,
+    "totalMonthly": <minimum + extra>
+  }},
+  "potentialSavings": <estimated interest savings in rupees>,
+  "estimatedPayoffTimeline": "X months" or "Y years Z months",
+  "tips": ["tip1 (prioritize interest-only conversion)", "tip2", "tip3"]
 }}
+
+IMPORTANT: Return ONLY the JSON object, no other text.
 `);
 
     const debtsText = data.debts
-      .map(
-        (d, idx) =>
-          `${idx + 1}. ${d.debtName}\n   Total: ₹${d.totalAmount}\n   Remaining: ₹${d.remainingAmount}\n   Monthly EMI: ₹${d.monthlyEMI}\n   Interest Rate: ${d.interestRate}%`
-      )
+      .map((d, idx) => {
+        const emiTypeText =
+          d.emiType === 'INTEREST_ONLY' ? ' (Interest-Only)' : ' (Principal + Interest)';
+        const breakdownText =
+          d.principalComponent && d.interestComponent
+            ? `\n   EMI Breakdown: Principal ₹${d.principalComponent.toFixed(0)}, Interest ₹${d.interestComponent.toFixed(0)}`
+            : '';
+        return `${idx + 1}. ${d.debtName}${emiTypeText}\n   Total: ₹${d.totalAmount}\n   Remaining: ₹${d.remainingAmount}\n   Monthly EMI: ₹${d.monthlyEMI}\n   Interest Rate: ${d.interestRate}%${breakdownText}`;
+      })
       .join('\n\n');
 
     const input = await prompt.format({
@@ -335,36 +359,58 @@ Provide a comprehensive strategy in JSON format:
     });
 
     const response = await llm.invoke(input);
-    const content = response.content as string;
+    const content = cleanJsonResponse(response.content as string);
 
-    // Extract JSON from response
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
+    try {
+      const parsed = JSON.parse(content);
+
+      // Add debtId to priorityOrder if available
+      const priorityOrderWithIds = parsed.priorityOrder.map(
+        (item: { debtName: string; order: number; reason: string }) => {
+          const matchingDebt = data.debts.find((d) => d.debtName === item.debtName);
+          return {
+            ...item,
+            debtId: matchingDebt?.debtId || '',
+          };
+        }
+      );
+
       return {
-        totalDebt,
-        monthlyIncome: data.monthlyIncome,
-        totalEMI,
-        availableForDebt,
         ...parsed,
+        priorityOrder: priorityOrderWithIds,
+      } as DebtStrategyResult;
+    } catch {
+      this.logger.error('Failed to parse debt strategy response:', content);
+
+      // Return fallback strategy
+      const sortedByInterest = [...data.debts].sort((a, b) => b.interestRate - a.interestRate);
+      const extraPayment = Math.max(0, availableForDebt - totalEMI);
+
+      return {
+        recommendedMethod: 'AVALANCHE',
+        strategyExplanation:
+          'Using debt avalanche method to minimize interest payments by targeting highest interest rate debts first.',
+        priorityOrder: sortedByInterest.map((d, idx) => ({
+          debtId: d.debtId || '',
+          debtName: d.debtName,
+          order: idx + 1,
+          reason: `Interest rate: ${d.interestRate}% - Paying this first saves the most on interest`,
+        })),
+        monthlyRecommendation: {
+          minimumPayments: totalEMI,
+          extraPaymentSuggestion: Math.round(extraPayment * 0.5), // Suggest 50% of available surplus
+          totalMonthly: Math.round(totalEMI + extraPayment * 0.5),
+        },
+        potentialSavings: Math.round(totalDebt * 0.1), // Rough estimate
+        estimatedPayoffTimeline: `${Math.ceil(totalDebt / (totalEMI + extraPayment * 0.5))} months`,
+        tips: [
+          'Pay more than the minimum whenever possible to reduce interest',
+          'Consider consolidating high-interest debts',
+          'Build an emergency fund to avoid taking on new debt',
+          'Review and reduce discretionary expenses to free up more for debt payment',
+        ],
       };
     }
-
-    // Fallback if no JSON found
-    return {
-      totalDebt,
-      monthlyIncome: data.monthlyIncome,
-      totalEMI,
-      availableForDebt,
-      strategy: content,
-      recommendations: ['Review the detailed strategy above'],
-      payoffTimeline: 'Calculate based on current EMI payments',
-      priorityDebts: data.debts.map((d, idx) => ({
-        debtName: d.debtName,
-        priority: idx + 1,
-        reasoning: `Interest rate: ${d.interestRate}%`,
-      })),
-    };
   }
 
   /**

@@ -38,6 +38,44 @@ class DebtController extends ResponseHandler {
     const response = await debtService.removeDebtService(debtId as string, req.user?._id);
     await this.sendResponse(response, res);
   });
+
+  recordPayment = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const paymentData = req.body;
+    const debtService = new DebtService();
+    const response = await debtService.recordPaymentService(paymentData, req.user?._id);
+    await this.sendResponse(response, res);
+  });
+
+  getPaymentHistory = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { debtId } = req.params;
+    const debtService = new DebtService();
+    const response = await debtService.getPaymentHistoryService(debtId as string, req.user?._id);
+    await this.sendResponse(response, res);
+  });
+
+  getPayoffProjection = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { debtId } = req.params;
+    const debtService = new DebtService();
+    const response = await debtService.getPayoffProjectionService(debtId as string, req.user?._id);
+    await this.sendResponse(response, res);
+  });
+
+  getDebtSummary = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const debtService = new DebtService();
+    const response = await debtService.getDebtSummaryService(req.user?._id);
+    await this.sendResponse(response, res);
+  });
+
+  getDebtStrategy = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { monthlyIncome, monthlyExpenses } = req.query;
+    const debtService = new DebtService();
+    const response = await debtService.getDebtStrategyService(
+      req.user?._id,
+      monthlyIncome ? Number(monthlyIncome) : undefined,
+      monthlyExpenses ? Number(monthlyExpenses) : undefined
+    );
+    await this.sendResponse(response, res);
+  });
 }
 
 export { DebtController };
