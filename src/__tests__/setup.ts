@@ -10,7 +10,7 @@
 
 // Set test environment variables
 process.env.NODE_ENV = 'test';
-process.env.JWT_SECRET = 'test-jwt-secret-key-for-testing';
+process.env.JWT_SECRET_KEY = 'test-jwt-secret-key-for-testing';
 process.env.MONGODB_URI = 'mongodb://localhost:27017/test'; // Will be overridden by MongoDB Memory Server
 
 // Increase timeout for slower systems
