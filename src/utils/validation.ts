@@ -1,6 +1,6 @@
-import { CustomError } from '../core/ApiError';
-import { IMember, SplitType } from '../models/transaction-group.model';
-import { SavedMember } from '../models/saved-member.model';
+import { CustomError } from '../shared/core/ApiError';
+import { IMember, SplitType } from '../modules/transactions/models/transaction-group.model';
+import { SavedMember } from '../modules/members/models/saved-member.model';
 import { Types } from 'mongoose';
 
 const VALID_SPLIT_TYPES: SplitType[] = [

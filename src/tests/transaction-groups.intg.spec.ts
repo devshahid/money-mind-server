@@ -46,7 +46,7 @@ jest.mock('mongoose', () => {
 jest.mock('../services/transaction-groups.service');
 
 import app from '../app';
-import { TransactionGroupsService } from '../services/transaction-groups.service';
+import { TransactionGroupsService } from '../modules/transactions/transaction-groups.service';
 
 const MockedService = TransactionGroupsService as jest.MockedClass<typeof TransactionGroupsService>;
 

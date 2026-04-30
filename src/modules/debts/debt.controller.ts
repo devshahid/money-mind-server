@@ -1,0 +1,43 @@
+import asyncHandler from '../../shared/utils/asyncHandler';
+import ResponseHandler from '../../shared/utils/responseHandler';
+import { CustomRequest } from '../../shared/middlewares/auth/authHandler';
+import { DebtService } from './debt.service';
+import { Response } from 'express';
+
+class DebtController extends ResponseHandler {
+  addDebt = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { debtDetails } = req.body;
+    const debtService = new DebtService();
+    const response = await debtService.addDebtService(debtDetails, req.user?._id);
+    await this.sendResponse(response, res);
+  });
+
+  updateDebt = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { debtId, debtDetails } = req.body;
+    const debtService = new DebtService();
+    const response = await debtService.updateDebtService(debtId, debtDetails, req.user?._id);
+    await this.sendResponse(response, res);
+  });
+
+  getDebt = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { debtId } = req.params;
+    const debtService = new DebtService();
+    const response = await debtService.getDebtService(debtId as string, req.user?._id);
+    await this.sendResponse(response, res);
+  });
+
+  listDebt = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const debtService = new DebtService();
+    const response = await debtService.listDebtService(req.user?._id);
+    await this.sendResponse(response, res);
+  });
+
+  deleteDebt = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { debtId } = req.params;
+    const debtService = new DebtService();
+    const response = await debtService.removeDebtService(debtId as string, req.user?._id);
+    await this.sendResponse(response, res);
+  });
+}
+
+export { DebtController };

@@ -1,0 +1,47 @@
+import asyncHandler from '../../shared/utils/asyncHandler';
+import ResponseHandler from '../../shared/utils/responseHandler';
+import { CustomRequest } from '../../shared/middlewares/auth/authHandler';
+import { IncomeService } from './income.service';
+import { Response } from 'express';
+
+class IncomeController extends ResponseHandler {
+  addIncome = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { incomeDetails } = req.body;
+    const incomeService = new IncomeService();
+    const response = await incomeService.addIncomeService(incomeDetails, req.user?._id);
+    await this.sendResponse(response, res);
+  });
+
+  getIncome = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { incomeId } = req.params;
+    const incomeService = new IncomeService();
+    const response = await incomeService.getIncomeService(incomeId as string, req.user?._id);
+    await this.sendResponse(response, res);
+  });
+
+  listIncome = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const incomeService = new IncomeService();
+    const response = await incomeService.listIncomeService(req.user?._id);
+    await this.sendResponse(response, res);
+  });
+
+  updateIncome = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { incomeId, incomeDetails } = req.body;
+    const incomeService = new IncomeService();
+    const response = await incomeService.updateIncomeService(
+      incomeId,
+      incomeDetails,
+      req.user?._id
+    );
+    await this.sendResponse(response, res);
+  });
+
+  deleteIncome = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { incomeId } = req.params;
+    const incomeService = new IncomeService();
+    const response = await incomeService.deleteIncomeService(incomeId as string, req.user?._id);
+    await this.sendResponse(response, res);
+  });
+}
+
+export { IncomeController };

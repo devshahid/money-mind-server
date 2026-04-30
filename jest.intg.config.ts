@@ -1,15 +1,14 @@
 import type { Config } from 'jest';
 
 /**
- * Jest Configuration - Unit Tests
- * Matches: *.spec.ts (excludes *.intg.spec.ts)
+ * Jest Configuration - Integration Tests
+ * Matches: *.intg.spec.ts
  */
 const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/src'],
-  testRegex: '.*(?<!\\.intg)\\.spec\\.ts$', // only unit tests (ignore integration tests)
-  testMatch: undefined, // Use testRegex instead
+  testRegex: '.*\\.intg\\.spec\\.ts$', // only integration tests (ignore unit tests)
   moduleFileExtensions: ['ts', 'js', 'json'],
   transform: {
     '^.+\\.ts$': [
@@ -29,9 +28,12 @@ const config: Config = {
     '!src/index.ts',
     '!src/handler.ts',
   ],
-  coverageDirectory: './coverage',
+  coverageDirectory: './coverage-integration',
   coveragePathIgnorePatterns: ['/node_modules/', '/dist/'],
-  testTimeout: 10000, // 10s
+  // Integration tests require more time as they may wait for database operations
+  testTimeout: 20000, // 20s
+  // Run tests sequentially to avoid database conflicts
+  maxWorkers: 1,
   verbose: true,
 };
 
