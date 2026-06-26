@@ -1,6 +1,8 @@
 import { CustomError } from '../../shared/core/ApiError';
 import { Debt, IDebtDetails } from './models/debts.model';
 import { DebtPayment } from './models/debt-payment.model';
+import { RepaymentSchedule, IRepaymentScheduleItem } from './models/repayment-schedule.model';
+import { DebtTransactionLink } from './models/debt-transaction-link.model';
 import { common } from '../../utils/common';
 import { Types, Document } from 'mongoose';
 import aiService from '../ai/ai.service';
@@ -435,6 +437,416 @@ class DebtService {
       message: 'Debt strategy generated successfully',
       strategy,
       debtCount: debts.length,
+    };
+  };
+
+  /**
+   * Get detailed debt view with all related information
+   * Combines debt info, payment history, and payoff projection in one call
+   */
+  getDetailedDebtService = async (debtId: string, userId?: Types.ObjectId) => {
+    // Get debt information
+    const debt = await Debt.findOne({ _id: common.convertToObjectId(debtId), userId });
+    if (!debt) throw new CustomError('Debt not found');
+
+    // Get payment history
+    const payments = await DebtPayment.find({ debtId: debt._id, userId })
+      .sort({ paymentDate: -1 })
+      .populate('transactionId', 'amount transactionDate description');
+
+    const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+    const paymentHistory = {
+      payments,
+      totalPaid,
+      paymentCount: payments.length,
+      recentPayments: payments.slice(0, 5), // Last 5 payments
+    };
+
+    // Calculate payoff projection (only for active debts)
+    let payoffProjection: PayoffProjection | null = null;
+    if (debt.debtDetails.debtStatus !== 'PAID') {
+      const principal = debt.debtDetails.remainingAmount;
+      const annualRate = debt.debtDetails.interestRate / 100;
+      const monthlyRate = annualRate / 12;
+      const monthlyPayment = debt.debtDetails.monthlyExpectedEMI;
+
+      let totalMonths: number;
+      if (monthlyRate === 0) {
+        totalMonths = Math.ceil(principal / monthlyPayment);
+      } else {
+        totalMonths = Math.ceil(
+          -Math.log(1 - (principal * monthlyRate) / monthlyPayment) / Math.log(1 + monthlyRate)
+        );
+      }
+
+      const monthlyBreakdown = [];
+      let remainingBalance = principal;
+      let totalInterest = 0;
+
+      for (let month = 1; month <= totalMonths; month++) {
+        const interestPayment = remainingBalance * monthlyRate;
+        const principalPayment = monthlyPayment - interestPayment;
+        remainingBalance -= principalPayment;
+
+        if (remainingBalance < 0) {
+          remainingBalance = 0;
+        }
+
+        totalInterest += interestPayment;
+
+        monthlyBreakdown.push({
+          month,
+          payment: monthlyPayment,
+          principal: principalPayment,
+          interest: interestPayment,
+          remainingBalance: Math.max(0, remainingBalance),
+        });
+
+        if (remainingBalance === 0) break;
+      }
+
+      const payoffDate = new Date();
+      payoffDate.setMonth(payoffDate.getMonth() + totalMonths);
+
+      payoffProjection = {
+        monthlyPayment,
+        totalMonths,
+        totalInterest,
+        totalPayment: principal + totalInterest,
+        payoffDate,
+        monthlyBreakdown,
+      };
+    }
+
+    // Calculate progress and statistics
+    const progressPercentage =
+      debt.debtDetails.totalAmount > 0
+        ? ((debt.debtDetails.totalAmount - debt.debtDetails.remainingAmount) /
+            debt.debtDetails.totalAmount) *
+          100
+        : 0;
+
+    return {
+      debt: this.transformDebtToFrontend(debt),
+      paymentHistory,
+      payoffProjection,
+      statistics: {
+        progressPercentage: Math.round(progressPercentage * 100) / 100,
+        totalPaid,
+        totalAmount: debt.debtDetails.totalAmount,
+        remainingAmount: debt.debtDetails.remainingAmount,
+        monthsElapsed: payments.length > 0 ? payments.length : 0,
+      },
+    };
+  };
+
+  /**
+   * Generate repayment schedule automatically based on debt details
+   */
+  generateRepaymentScheduleService = async (debtId: string, userId?: Types.ObjectId) => {
+    const debt = await Debt.findOne({ _id: common.convertToObjectId(debtId), userId });
+    if (!debt) throw new CustomError('Debt not found');
+
+    const remainingAmount = debt.debtDetails.remainingAmount;
+    const annualRate = debt.debtDetails.interestRate / 100;
+    const monthlyRate = annualRate / 12;
+    const monthlyPayment = debt.debtDetails.monthlyExpectedEMI;
+
+    // Calculate total months using amortization formula
+    let totalMonths: number;
+    if (monthlyRate === 0) {
+      totalMonths = Math.ceil(remainingAmount / monthlyPayment);
+    } else {
+      totalMonths = Math.ceil(
+        -Math.log(1 - (remainingAmount * monthlyRate) / monthlyPayment) / Math.log(1 + monthlyRate)
+      );
+    }
+
+    // Generate schedule items
+    const scheduleItems: IRepaymentScheduleItem[] = [];
+    let balance = remainingAmount;
+    const startDate = new Date(debt.debtDetails.paymentDate);
+
+    for (let month = 1; month <= totalMonths; month++) {
+      const dueDate = new Date(startDate);
+      dueDate.setMonth(dueDate.getMonth() + month);
+
+      const interestPayment = balance * monthlyRate;
+      const principalPayment = monthlyPayment - interestPayment;
+      balance -= principalPayment;
+
+      if (balance < 0) balance = 0;
+
+      scheduleItems.push({
+        month,
+        dueDate,
+        expectedAmount: monthlyPayment,
+        principalComponent: principalPayment,
+        interestComponent: interestPayment,
+        expectedBalance: Math.max(0, balance),
+        status: 'UPCOMING',
+        variance: 0,
+      });
+
+      if (balance === 0) break;
+    }
+
+    // Save or update schedule
+    const existingSchedule = await RepaymentSchedule.findOne({ debtId: debt._id, userId });
+    if (existingSchedule) {
+      existingSchedule.scheduleItems = scheduleItems;
+      existingSchedule.scheduleType = 'AUTO_GENERATED';
+      await existingSchedule.save();
+    } else {
+      await RepaymentSchedule.create({
+        debtId: debt._id,
+        userId,
+        scheduleType: 'AUTO_GENERATED',
+        scheduleItems,
+      });
+    }
+
+    // Update debt
+    await Debt.updateOne(
+      { _id: debt._id, userId },
+      { $set: { 'debtDetails.hasRepaymentSchedule': true } }
+    );
+
+    return {
+      message: 'Repayment schedule generated successfully',
+      totalMonths,
+      scheduleItems,
+    };
+  };
+
+  /**
+   * Import repayment schedule from data array
+   */
+  importRepaymentScheduleService = async (
+    debtId: string,
+    scheduleData: Array<{
+      month: number;
+      dueDate: string;
+      expectedAmount: number;
+      principalComponent: number;
+      interestComponent: number;
+      expectedBalance: number;
+    }>,
+    userId?: Types.ObjectId
+  ) => {
+    const debt = await Debt.findOne({ _id: common.convertToObjectId(debtId), userId });
+    if (!debt) throw new CustomError('Debt not found');
+
+    const scheduleItems: IRepaymentScheduleItem[] = scheduleData.map((item) => ({
+      month: item.month,
+      dueDate: new Date(item.dueDate),
+      expectedAmount: item.expectedAmount,
+      principalComponent: item.principalComponent,
+      interestComponent: item.interestComponent,
+      expectedBalance: item.expectedBalance,
+      status: 'UPCOMING',
+      variance: 0,
+    }));
+
+    // Save or update schedule
+    const existingSchedule = await RepaymentSchedule.findOne({ debtId: debt._id, userId });
+    if (existingSchedule) {
+      existingSchedule.scheduleItems = scheduleItems;
+      existingSchedule.scheduleType = 'IMPORTED';
+      await existingSchedule.save();
+    } else {
+      await RepaymentSchedule.create({
+        debtId: debt._id,
+        userId,
+        scheduleType: 'IMPORTED',
+        scheduleItems,
+      });
+    }
+
+    // Update debt
+    await Debt.updateOne(
+      { _id: debt._id, userId },
+      { $set: { 'debtDetails.hasRepaymentSchedule': true } }
+    );
+
+    return {
+      message: 'Repayment schedule imported successfully',
+      itemCount: scheduleItems.length,
+    };
+  };
+
+  /**
+   * Get repayment schedule for a debt
+   */
+  getRepaymentScheduleService = async (debtId: string, userId?: Types.ObjectId) => {
+    const debt = await Debt.findOne({ _id: common.convertToObjectId(debtId), userId });
+    if (!debt) throw new CustomError('Debt not found');
+
+    const schedule = await RepaymentSchedule.findOne({ debtId: debt._id, userId });
+    if (!schedule) {
+      return {
+        message: 'No repayment schedule found',
+        hasSchedule: false,
+        schedule: null,
+      };
+    }
+
+    return {
+      message: 'Repayment schedule retrieved successfully',
+      hasSchedule: true,
+      schedule: {
+        scheduleType: schedule.scheduleType,
+        scheduleItems: schedule.scheduleItems,
+        totalItems: schedule.scheduleItems.length,
+        createdAt: schedule.createdAt,
+        updatedAt: schedule.updatedAt,
+      },
+    };
+  };
+
+  /**
+   * Link a transaction to a debt
+   */
+  linkTransactionToDebtService = async (
+    debtId: string,
+    transactionId: string,
+    linkType: 'AUTO' | 'MANUAL',
+    userId?: Types.ObjectId,
+    confidence?: number,
+    notes?: string
+  ) => {
+    const debt = await Debt.findOne({ _id: common.convertToObjectId(debtId), userId });
+    if (!debt) throw new CustomError('Debt not found');
+
+    // Check if transaction is already linked to another debt
+    const existingLink = await DebtTransactionLink.findOne({
+      transactionId: common.convertToObjectId(transactionId),
+      userId,
+    });
+
+    if (existingLink) {
+      throw new CustomError('Transaction is already linked to another debt');
+    }
+
+    // Create link
+    const link = await DebtTransactionLink.create({
+      userId,
+      debtId: debt._id,
+      transactionId: common.convertToObjectId(transactionId),
+      linkType,
+      confidence: linkType === 'AUTO' ? confidence : undefined,
+      notes,
+      linkedDate: new Date(),
+    });
+
+    return {
+      message: 'Transaction linked successfully',
+      link: {
+        _id: link._id,
+        transactionId: link.transactionId,
+        linkType: link.linkType,
+        confidence: link.confidence,
+        linkedDate: link.linkedDate,
+        createdBy: link.createdBy,
+      },
+    };
+  };
+
+  /**
+   * Unlink a transaction from a debt
+   */
+  unlinkTransactionFromDebtService = async (
+    debtId: string,
+    transactionId: string,
+    userId?: Types.ObjectId
+  ) => {
+    const debt = await Debt.findOne({ _id: common.convertToObjectId(debtId), userId });
+    if (!debt) throw new CustomError('Debt not found');
+
+    const result = await DebtTransactionLink.deleteOne({
+      debtId: debt._id,
+      transactionId: common.convertToObjectId(transactionId),
+      userId,
+    });
+
+    if (result.deletedCount === 0) {
+      throw new CustomError('Transaction link not found');
+    }
+
+    return {
+      message: 'Transaction unlinked successfully',
+    };
+  };
+
+  /**
+   * Get all transactions linked to a debt
+   */
+  getLinkedTransactionsService = async (debtId: string, userId?: Types.ObjectId) => {
+    const debt = await Debt.findOne({ _id: common.convertToObjectId(debtId), userId });
+    if (!debt) throw new CustomError('Debt not found');
+
+    const links = await DebtTransactionLink.find({ debtId: debt._id, userId })
+      .populate('transactionId')
+      .sort({ linkedDate: -1 });
+
+    return {
+      message: 'Linked transactions retrieved successfully',
+      links: links.map((link) => ({
+        _id: link._id,
+        transactionId: link.transactionId,
+        linkType: link.linkType,
+        confidence: link.confidence,
+        linkedDate: link.linkedDate,
+        notes: link.notes,
+        createdBy: link.createdBy,
+      })),
+      totalLinks: links.length,
+    };
+  };
+
+  /**
+   * Update schedule item status and link to payment
+   */
+  updateScheduleItemService = async (
+    debtId: string,
+    month: number,
+    updates: {
+      status?: 'UPCOMING' | 'PAID' | 'PARTIAL' | 'MISSED' | 'OVERPAID';
+      actualPaymentId?: string;
+      linkedTransactionId?: string;
+      variance?: number;
+      notes?: string;
+    },
+    userId?: Types.ObjectId
+  ) => {
+    const debt = await Debt.findOne({ _id: common.convertToObjectId(debtId), userId });
+    if (!debt) throw new CustomError('Debt not found');
+
+    const schedule = await RepaymentSchedule.findOne({ debtId: debt._id, userId });
+    if (!schedule) throw new CustomError('Repayment schedule not found');
+
+    const itemIndex = schedule.scheduleItems.findIndex((item) => item.month === month);
+    if (itemIndex === -1) throw new CustomError('Schedule item not found');
+
+    // Update the item
+    if (updates.status) schedule.scheduleItems[itemIndex].status = updates.status;
+    if (updates.actualPaymentId)
+      schedule.scheduleItems[itemIndex].actualPaymentId = common.convertToObjectId(
+        updates.actualPaymentId
+      ) as Types.ObjectId;
+    if (updates.linkedTransactionId)
+      schedule.scheduleItems[itemIndex].linkedTransactionId = common.convertToObjectId(
+        updates.linkedTransactionId
+      ) as Types.ObjectId;
+    if (updates.variance !== undefined)
+      schedule.scheduleItems[itemIndex].variance = updates.variance;
+    if (updates.notes) schedule.scheduleItems[itemIndex].notes = updates.notes;
+
+    await schedule.save();
+
+    return {
+      message: 'Schedule item updated successfully',
+      updatedItem: schedule.scheduleItems[itemIndex],
     };
   };
 }

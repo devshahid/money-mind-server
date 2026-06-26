@@ -16,6 +16,8 @@ export interface IDebtDetails {
   emiType?: 'INTEREST_ONLY' | 'PRINCIPAL_AND_INTEREST'; // Type of EMI payment
   principalComponent?: number; // Amount going towards principal
   interestComponent?: number; // Amount going towards interest
+  autoLinkTransactions?: boolean; // Enable/disable auto-linking of transactions
+  hasRepaymentSchedule?: boolean; // Whether a repayment schedule exists
 }
 export interface IDebtMdodel extends Document {
   _id: Types.ObjectId;
@@ -87,6 +89,14 @@ const debtSchema: Schema<IDebtMdodel> = new Schema(
       interestComponent: {
         type: Number,
         default: 0,
+      },
+      autoLinkTransactions: {
+        type: Boolean,
+        default: false,
+      },
+      hasRepaymentSchedule: {
+        type: Boolean,
+        default: false,
       },
     },
   },

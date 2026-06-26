@@ -76,6 +76,91 @@ class DebtController extends ResponseHandler {
     );
     await this.sendResponse(response, res);
   });
+
+  getDetailedDebt = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { debtId } = req.params;
+    const debtService = new DebtService();
+    const response = await debtService.getDetailedDebtService(debtId as string, req.user?._id);
+    await this.sendResponse(response, res);
+  });
+
+  generateRepaymentSchedule = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { debtId } = req.params;
+    const debtService = new DebtService();
+    const response = await debtService.generateRepaymentScheduleService(
+      debtId as string,
+      req.user?._id
+    );
+    await this.sendResponse(response, res);
+  });
+
+  importRepaymentSchedule = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { debtId } = req.params;
+    const { scheduleData } = req.body;
+    const debtService = new DebtService();
+    const response = await debtService.importRepaymentScheduleService(
+      debtId as string,
+      scheduleData,
+      req.user?._id
+    );
+    await this.sendResponse(response, res);
+  });
+
+  getRepaymentSchedule = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { debtId } = req.params;
+    const debtService = new DebtService();
+    const response = await debtService.getRepaymentScheduleService(debtId as string, req.user?._id);
+    await this.sendResponse(response, res);
+  });
+
+  linkTransactionToDebt = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { debtId } = req.params;
+    const { transactionId, linkType, confidence, notes } = req.body;
+    const debtService = new DebtService();
+    const response = await debtService.linkTransactionToDebtService(
+      debtId as string,
+      transactionId,
+      linkType,
+      req.user?._id,
+      confidence,
+      notes
+    );
+    await this.sendResponse(response, res);
+  });
+
+  unlinkTransactionFromDebt = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { debtId, transactionId } = req.params;
+    const debtService = new DebtService();
+    const response = await debtService.unlinkTransactionFromDebtService(
+      debtId as string,
+      transactionId as string,
+      req.user?._id
+    );
+    await this.sendResponse(response, res);
+  });
+
+  getLinkedTransactions = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { debtId } = req.params;
+    const debtService = new DebtService();
+    const response = await debtService.getLinkedTransactionsService(
+      debtId as string,
+      req.user?._id
+    );
+    await this.sendResponse(response, res);
+  });
+
+  updateScheduleItem = asyncHandler(async (req: CustomRequest, res: Response) => {
+    const { debtId, month } = req.params;
+    const updates = req.body;
+    const debtService = new DebtService();
+    const response = await debtService.updateScheduleItemService(
+      debtId as string,
+      Number(month),
+      updates,
+      req.user?._id
+    );
+    await this.sendResponse(response, res);
+  });
 }
 
 export { DebtController };

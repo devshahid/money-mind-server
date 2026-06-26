@@ -68,4 +68,60 @@ debtRoute.get('/summary', authHandler.userAccess, debtController.getDebtSummary)
 
 debtRoute.get('/strategy', authHandler.userAccess, debtController.getDebtStrategy);
 
+debtRoute.get(
+  '/detailed/:debtId',
+  authHandler.userAccess,
+  validateRequest(debtIdParamSchema, 'params'),
+  debtController.getDetailedDebt
+);
+
+// Repayment Schedule Routes
+debtRoute.post(
+  '/schedule/generate/:debtId',
+  authHandler.userAccess,
+  validateRequest(debtIdParamSchema, 'params'),
+  debtController.generateRepaymentSchedule
+);
+
+debtRoute.post(
+  '/schedule/import/:debtId',
+  authHandler.userAccess,
+  validateRequest(debtIdParamSchema, 'params'),
+  debtController.importRepaymentSchedule
+);
+
+debtRoute.get(
+  '/schedule/:debtId',
+  authHandler.userAccess,
+  validateRequest(debtIdParamSchema, 'params'),
+  debtController.getRepaymentSchedule
+);
+
+debtRoute.put(
+  '/schedule/:debtId/:month',
+  authHandler.userAccess,
+  debtController.updateScheduleItem
+);
+
+// Transaction Linking Routes
+debtRoute.post(
+  '/link-transaction/:debtId',
+  authHandler.userAccess,
+  validateRequest(debtIdParamSchema, 'params'),
+  debtController.linkTransactionToDebt
+);
+
+debtRoute.delete(
+  '/unlink-transaction/:debtId/:transactionId',
+  authHandler.userAccess,
+  debtController.unlinkTransactionFromDebt
+);
+
+debtRoute.get(
+  '/linked-transactions/:debtId',
+  authHandler.userAccess,
+  validateRequest(debtIdParamSchema, 'params'),
+  debtController.getLinkedTransactions
+);
+
 export { debtRoute };
