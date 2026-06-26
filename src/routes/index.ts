@@ -1,18 +1,15 @@
 import express from 'express';
-import {
-  userRoute,
-  expenseRoute,
-  debtRoute,
-  incomeRoute,
-  transactionLogsRoute,
-  transactionGroupsRoute,
-  membersRoute,
-  goalsRoute,
-  budgetsRoute,
-  analyticsRoute,
-  aiRoute,
-} from '../modules';
-
+import { userRoute } from './user.route';
+import { expenseRoute } from './expense.route';
+import { debtRoute } from './debt.route';
+import { incomeRoute } from './income.route';
+import { transactionLogsRoute } from './transaction-logs.route';
+import { transactionGroupsRoute } from './transaction-groups.route';
+import { membersRoute } from './members.route';
+import { goalsRoute } from './goals.route';
+import { budgetsRoute } from './budgets.route';
+import { analyticsRoute } from './analytics.route';
+import { aiRoute } from './ai.route';
 const router = express.Router();
 
 router.use('/user', userRoute);

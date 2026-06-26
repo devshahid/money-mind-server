@@ -1,4 +1,4 @@
-import { CustomError } from '../shared/core/ApiError';
+import { CustomError } from '../core/ApiError';
 import {
   validateGroupName,
   validateClientId,
@@ -6,7 +6,7 @@ import {
   validateMemberFields,
   validateMemberName,
 } from '../utils/validation';
-import { IMember } from '../modules/transactions/models/transaction-group.model';
+import { IMember } from '../models/transaction-group.model';
 import { Types } from 'mongoose';
 
 describe('Validation helpers', () => {
