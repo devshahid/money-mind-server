@@ -2,7 +2,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 
-import { ApiError } from './core/ApiError';
+import { ApiError } from './shared/core';
+import { setupSwagger } from './config/swagger';
 import router from './routes/index';
 
 process.on('uncaughtException', (e) => {
@@ -39,6 +40,11 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   if (req.query) console.log('Request Query:', req.query); // Logs request body
   next();
 });
+
+// Setup Swagger documentation (only in development)
+if (process.env.NODE_ENV !== 'production') {
+  setupSwagger(app);
+}
 
 // Routes
 app.use('/api/v1', router);
