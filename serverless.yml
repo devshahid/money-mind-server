@@ -17,6 +17,14 @@ provider:
     ENVIRONMENT: 'prod'
     SERVER: 'deploy'
 
+package:
+  patterns:
+    - '!**'
+    - 'dist/**'
+    - 'package.json'
+    - 'package-lock.json'
+  excludeDevDependencies: true
+
 functions:
   management-api:
     handler: dist/handler.debtmanagementapi
