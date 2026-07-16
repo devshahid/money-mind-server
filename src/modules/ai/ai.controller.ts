@@ -66,6 +66,7 @@ class AIController extends ResponseHandler {
         transactionId: cat.transactionId,
         narration: transaction?.narration || '',
         amount: transaction?.amount || 0,
+        isCredit: transaction?.isCredit || false,
         currentCategory: transaction?.category || '',
         suggestedCategory: cat.category,
         confidence: cat.confidence,
@@ -117,8 +118,8 @@ class AIController extends ResponseHandler {
         }
 
         transaction.category = category;
-        transaction.aiSuggested = true;
-        transaction.aiConfidence = confidence || 0;
+        transaction.aiSuggested = !suggestion.userOverride;
+        transaction.aiConfidence = suggestion.userOverride ? 0 : confidence || 0;
         transaction.aiConfirmed = true;
         await transaction.save();
 

@@ -18,9 +18,11 @@ export const applySuggestionsSchema = Joi.object({
     .items(
       Joi.object({
         transactionId: Joi.string().required(),
-        suggestedCategory: Joi.string()
+        category: Joi.string()
           .valid(...EXPENSE_CATEGORIES)
           .required(),
+        confidence: Joi.number().min(0).max(1).optional(),
+        userOverride: Joi.boolean().optional(),
       })
     )
     .min(1)
