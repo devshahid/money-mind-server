@@ -8,7 +8,6 @@ provider:
   region: ap-south-1
   runtime: nodejs20.x
   memorySize: 512
-  profile: ${env:AWS_PROFILE, 'money-mind-server'}
   environment:
     NODE_ENV: 'prod'
     PORT: 8000

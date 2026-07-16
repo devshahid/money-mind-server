@@ -29,7 +29,7 @@ jobs:
         run: npm install
 
       - name: Deploy to AWS
-        run: unset AWS_PROFILE && npx serverless deploy --verbose
+        run: npx serverless deploy
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
