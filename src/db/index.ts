@@ -8,7 +8,8 @@ const connectDb = async () => {
     console.info(`DB HOSTNAME: ${dbInstance.connection.host}`);
   } catch (error) {
     console.error(`MONGODB CONNECTION FAILED : ${error}`);
-    process.exit(1);
+    // In Lambda, throw error instead of process.exit
+    throw error;
   }
 };
 

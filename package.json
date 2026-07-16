@@ -14,7 +14,7 @@
     "check-prettier": "prettier src/**/* --check",
     "check-eslint": "eslint src/**/*.ts",
     "fix-prettier": "npx prettier src/**/* --write",
-    "deploy": "npm run build && serverless deploy",
+    "deploy": "serverless deploy",
     "test": "jest --coverage",
     "test:unit": "jest --coverage",
     "test:integration": "jest -c ./jest.intg.config.ts --forceExit",

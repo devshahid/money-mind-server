@@ -33,7 +33,12 @@ class AIController extends ResponseHandler {
       throw new CustomError('Please provide transactionIds or set all=true');
     }
 
-    const transactions = await TransactionLogs.find(query).limit(100);
+    // Count total matching for pagination info
+    const totalUncategorized = await TransactionLogs.countDocuments(query);
+
+    // Limit to 20 transactions per request to stay within Lambda/API Gateway timeout (29s)
+    // Each batch of 10 takes ~5-10s for the LLM call, so 20 = 2 batches = ~15-20s max
+    const transactions = await TransactionLogs.find(query).limit(20);
 
     if (transactions.length === 0) {
       await this.sendResponse({ message: 'No transactions to categorize', suggestions: [] }, res);
@@ -50,6 +55,10 @@ class AIController extends ResponseHandler {
 
     const categorizations = await aiService.categorizeTransactionsBatch(transactionsData);
 
+    console.log(
+      `✅ AI categorization complete - ${categorizations.length} results for ${transactionsData.length} transactions`
+    );
+
     // Return suggestions with transaction details
     const suggestions = categorizations.map((cat) => {
       const transaction = transactions.find((t) => t._id.toString() === cat.transactionId);
@@ -64,10 +73,14 @@ class AIController extends ResponseHandler {
       };
     });
 
+    console.log(`📤 Sending suggest-categories response - ${suggestions.length} suggestions`);
+
     await this.sendResponse(
       {
         message: `Generated ${suggestions.length} AI category suggestions`,
         total: suggestions.length,
+        totalUncategorized,
+        hasMore: totalUncategorized > suggestions.length,
         suggestions,
       },
       res

@@ -4,9 +4,10 @@ service: money-mind-v1-apis
 provider:
   name: aws
   stage: prod
-  timeout: 20
+  timeout: 29
   region: ap-south-1
   runtime: nodejs20.x
+  memorySize: 512
   profile: money-mind-server
   environment:
     NODE_ENV: 'prod'
@@ -14,20 +15,26 @@ provider:
     DB_NAME: ${ssm:/money-mind/prod/DB_NAME}
     DB_URL: ${ssm:/money-mind/prod/DB_URL}
     JWT_SECRET_KEY: ${ssm:/money-mind/prod/JWT_SECRET_KEY}
+    GITHUB_TOKEN: ${ssm:/money-mind/prod/GITHUB_TOKEN, ''}
+    GITHUB_MODEL: ${ssm:/money-mind/prod/GITHUB_MODEL, 'gpt-4o'}
     ENVIRONMENT: 'prod'
     SERVER: 'deploy'
 
 package:
-  patterns:
-    - '!**'
-    - 'dist/**'
-    - 'package.json'
-    - 'package-lock.json'
-  excludeDevDependencies: true
+  individually: true
+
+build:
+  esbuild:
+    bundle: true
+    minify: false
+    sourcemap: true
+    target: node20
+    external:
+      - '@aws-sdk/*'
 
 functions:
   management-api:
-    handler: dist/handler.debtmanagementapi
+    handler: src/handler.debtmanagementapi
     events:
       - http:
           path: /

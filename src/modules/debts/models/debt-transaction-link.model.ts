@@ -54,7 +54,6 @@ const debtTransactionLinkSchema = new Schema<IDebtTransactionLink>(
 
 // Compound indexes for efficient queries
 debtTransactionLinkSchema.index({ debtId: 1, userId: 1 });
-debtTransactionLinkSchema.index({ transactionId: 1, userId: 1 });
 
 // Unique constraint: one transaction can only be linked to one debt
 debtTransactionLinkSchema.index({ transactionId: 1, userId: 1 }, { unique: true });

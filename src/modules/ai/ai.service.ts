@@ -235,6 +235,10 @@ Common patterns to recognize:
       const response = await llm.invoke(input);
       const cleanedResponse = cleanJsonResponse(response.content as string);
 
+      console.log(
+        `✅ LLM batch ${Math.floor(i / chunkSize) + 1} responded - ${chunk.length} transactions, response length: ${cleanedResponse.length} chars`
+      );
+
       try {
         const chunkResults = (await parser.parse(cleanedResponse)) as BatchCategorizationResult[];
         results.push(...chunkResults);
