@@ -1,13 +1,21 @@
-name: Deploy to AWS
+name: Release Backend
 
 on:
   push:
     branches:
       - deploy
 
+run-name: '${{ github.event.head_commit.message }}'
+
+concurrency:
+  group: backend-deploy
+  cancel-in-progress: true
+
 jobs:
   deploy:
+    name: Deploy to AWS Lambda
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
