@@ -36,6 +36,7 @@ export const EXPENSE_CATEGORIES = [
   'Pet Care',
   'Purchase',
   'Payments',
+  'Refunds & Reversals',
   'Other',
 ] as const;
 
