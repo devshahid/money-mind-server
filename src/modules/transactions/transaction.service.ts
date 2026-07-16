@@ -206,7 +206,25 @@ class TransactionLogsService {
     if (type && type === 'credit') matchQuery.isCredit = true;
 
     if (labels && labels.length > 0) matchQuery.label = { $in: labels };
-    if (category && category.length > 0) matchQuery.category = { $in: category };
+    if (category && category.length > 0) {
+      const categoryArr = Array.isArray(category) ? category : [category];
+      const hasUncategorized = categoryArr.includes('Uncategorized');
+      const otherCategories = categoryArr.filter((c: string) => c !== 'Uncategorized');
+
+      if (hasUncategorized && otherCategories.length > 0) {
+        matchQuery.$or = [
+          { category: { $exists: false } },
+          { category: null },
+          { category: '' },
+          { category: 'Others' },
+          { category: { $in: otherCategories } },
+        ];
+      } else if (hasUncategorized) {
+        matchQuery.$or = [{ category: { $exists: false } }];
+      } else {
+        matchQuery.category = { $in: categoryArr };
+      }
+    }
 
     if (dateFrom || dateTo) {
       matchQuery.transactionDate = {};

@@ -29,8 +29,8 @@ export const fetchTransactionsSchema = Joi.object({
   transactionType: Joi.string().valid('credit', 'debit').optional(),
   type: Joi.string().optional(),
   labels: Joi.array().items(Joi.string()).optional(),
-  category: Joi.string()
-    .valid(...EXPENSE_CATEGORIES)
+  category: Joi.array()
+    .items(Joi.string().valid(...EXPENSE_CATEGORIES, 'Uncategorized'))
     .optional(),
   keyword: Joi.string().optional(),
 });
