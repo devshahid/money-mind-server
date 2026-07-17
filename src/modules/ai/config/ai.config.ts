@@ -32,6 +32,7 @@ export function createLLM(temperature = 0.7, useGitHub = true): ChatOpenAI {
     return new ChatOpenAI({
       modelName: AI_CONFIG.GITHUB_MODEL,
       temperature,
+      timeout: 25000, // 25s timeout to stay within API Gateway 29s limit
       apiKey: AI_CONFIG.GITHUB_TOKEN,
       configuration: {
         baseURL: 'https://models.inference.ai.azure.com',
@@ -45,6 +46,7 @@ export function createLLM(temperature = 0.7, useGitHub = true): ChatOpenAI {
     return new ChatOpenAI({
       modelName: AI_CONFIG.OPENAI_MODEL,
       temperature,
+      timeout: 25000, // 25s timeout to stay within API Gateway 29s limit
       apiKey: AI_CONFIG.OPENAI_API_KEY,
     });
   }

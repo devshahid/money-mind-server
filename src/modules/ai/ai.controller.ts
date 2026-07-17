@@ -36,9 +36,9 @@ class AIController extends ResponseHandler {
     // Count total matching for pagination info
     const totalUncategorized = await TransactionLogs.countDocuments(query);
 
-    // Limit to 20 transactions per request to stay within Lambda/API Gateway timeout (29s)
-    // Each batch of 10 takes ~5-10s for the LLM call, so 20 = 2 batches = ~15-20s max
-    const transactions = await TransactionLogs.find(query).limit(20);
+    // Limit to 10 transactions per request to stay within Lambda/API Gateway timeout (29s)
+    // Each batch of 10 takes ~5-10s for the LLM call, so 10 = 1 batch = ~5-10s max
+    const transactions = await TransactionLogs.find(query).limit(10);
 
     if (transactions.length === 0) {
       await this.sendResponse({ message: 'No transactions to categorize', suggestions: [] }, res);
