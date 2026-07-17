@@ -251,7 +251,7 @@ describe('TransactionLogsService (Unit Tests)', () => {
               isCash: false,
               isCredit: false,
               label: expect.objectContaining({ $in: 'food,groceries' }),
-              category: expect.objectContaining({ $in: 'Food' }),
+              category: expect.objectContaining({ $in: ['Food'] }),
             }),
           }),
         ])
