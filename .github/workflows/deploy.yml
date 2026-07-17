@@ -31,9 +31,19 @@ jobs:
 
       - name: Run unit tests
         run: npm run test:unit
+        env:
+          GITHUB_TOKEN: test-token-for-ci
+          GITHUB_MODEL: gpt-4o-mini
+          DB_URL: mongodb://localhost:27017
+          DB_NAME: test
 
       - name: Run integration tests
         run: npm run test:integration
+        env:
+          GITHUB_TOKEN: test-token-for-ci
+          GITHUB_MODEL: gpt-4o-mini
+          DB_URL: mongodb://localhost:27017
+          DB_NAME: test
 
   release:
     name: Semantic Release

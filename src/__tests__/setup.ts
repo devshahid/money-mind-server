@@ -12,6 +12,10 @@
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET_KEY = 'test-jwt-secret-key-for-testing';
 process.env.MONGODB_URI = 'mongodb://localhost:27017/test'; // Will be overridden by MongoDB Memory Server
+process.env.GITHUB_TOKEN = process.env.GITHUB_TOKEN || 'test-github-token';
+process.env.GITHUB_MODEL = process.env.GITHUB_MODEL || 'gpt-4o-mini';
+process.env.DB_URL = process.env.DB_URL || 'mongodb://localhost:27017';
+process.env.DB_NAME = process.env.DB_NAME || 'test';
 
 // Increase timeout for slower systems
 jest.setTimeout(15000);
