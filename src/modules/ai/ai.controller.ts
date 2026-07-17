@@ -35,6 +35,7 @@ class AIController extends ResponseHandler {
 
     // Count total matching for pagination info
     const totalUncategorized = await TransactionLogs.countDocuments(query);
+    console.info('[INFO]:: Total Uncategorized Transactions: ', totalUncategorized);
 
     // Limit to 10 transactions per request to stay within Lambda/API Gateway timeout (29s)
     // Each batch of 10 takes ~5-10s for the LLM call, so 10 = 1 batch = ~5-10s max
@@ -53,9 +54,11 @@ class AIController extends ResponseHandler {
       currentCategory: t.category || '',
     }));
 
+    console.info('[INFO]:: Before call ');
+    // Calling LLM model to identify the category of the transaction
     const categorizations = await aiService.categorizeTransactionsBatch(transactionsData);
-
-    console.log(
+    console.info('[INFO]:: LLM response -> ', categorizations);
+    console.info(
       `✅ AI categorization complete - ${categorizations.length} results for ${transactionsData.length} transactions`
     );
 
@@ -74,7 +77,9 @@ class AIController extends ResponseHandler {
       };
     });
 
-    console.log(`📤 Sending suggest-categories response - ${suggestions.length} suggestions`);
+    console.info(
+      `[INFO]:: Sending suggest-categories response - ${suggestions.length} suggestions`
+    );
 
     await this.sendResponse(
       {

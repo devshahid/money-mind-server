@@ -19,7 +19,7 @@ export default (requestHandler: AsyncFunction) =>
       })
       .catch(async (err) => {
         await session.abortTransaction(); // Abort the transaction in case of an error
-        console.log('AsyncHandler Error: ', err);
+        console.error('[ERROR]: AsyncHandler Error: ', err);
         return next(err); // Pass the error to the next middleware
       })
       .finally(() => {
