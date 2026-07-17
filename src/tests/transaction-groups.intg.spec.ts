@@ -2,7 +2,7 @@
 import request from 'supertest';
 
 // 1. Mock auth middleware (MUST be before app import)
-jest.mock('../middlewares/auth/authHandler', () => {
+jest.mock('../shared/middlewares/auth/authHandler', () => {
   const { Types } = jest.requireActual('mongoose');
   const testUser = {
     _id: new Types.ObjectId('507f1f77bcf86cd799439011'),
@@ -14,7 +14,7 @@ jest.mock('../middlewares/auth/authHandler', () => {
     default: {
       userAccess: jest.fn((req: any, _res: any, next: any) => {
         if (!req.get('accessToken')) {
-          const { AuthError } = jest.requireActual('../core/ApiError');
+          const { AuthError } = jest.requireActual('../shared/core/ApiError');
           return next(new AuthError('Please provide AccessToken!!'));
         }
         req.user = testUser;
@@ -33,6 +33,7 @@ jest.mock('mongoose', () => {
   const actual = jest.requireActual('mongoose');
   return {
     ...actual,
+    connection: { readyState: 1, asPromise: jest.fn().mockResolvedValue(undefined) },
     startSession: jest.fn().mockResolvedValue({
       startTransaction: jest.fn(),
       commitTransaction: jest.fn().mockResolvedValue(undefined),
@@ -43,7 +44,7 @@ jest.mock('mongoose', () => {
 });
 
 // 3. Mock the service layer
-jest.mock('../services/transaction-groups.service');
+jest.mock('../modules/transactions/transaction-groups.service');
 
 import app from '../app';
 import { TransactionGroupsService } from '../modules/transactions/transaction-groups.service';
@@ -83,7 +84,7 @@ describe('Transaction Groups (Integration)', () => {
 
     describe('when validation fails', () => {
       it('should return 400 when name is empty', async () => {
-        const { CustomError } = jest.requireActual('../core/ApiError');
+        const { CustomError } = jest.requireActual('../shared/core/ApiError');
         MockedService.prototype.createGroup.mockRejectedValue(
           new CustomError('Group name is required', 400)
         );
@@ -98,7 +99,7 @@ describe('Transaction Groups (Integration)', () => {
       });
 
       it('should return 400 when clientId is missing', async () => {
-        const { CustomError } = jest.requireActual('../core/ApiError');
+        const { CustomError } = jest.requireActual('../shared/core/ApiError');
         MockedService.prototype.createGroup.mockRejectedValue(
           new CustomError('clientId is required', 400)
         );
@@ -166,7 +167,7 @@ describe('Transaction Groups (Integration)', () => {
 
     describe('when group is not found', () => {
       it('should return 404', async () => {
-        const { CustomError } = jest.requireActual('../core/ApiError');
+        const { CustomError } = jest.requireActual('../shared/core/ApiError');
         MockedService.prototype.getGroup.mockRejectedValue(new CustomError('Group not found', 404));
 
         const res = await request(app)
@@ -207,7 +208,7 @@ describe('Transaction Groups (Integration)', () => {
 
     describe('when group is not found', () => {
       it('should return 404', async () => {
-        const { CustomError } = jest.requireActual('../core/ApiError');
+        const { CustomError } = jest.requireActual('../shared/core/ApiError');
         MockedService.prototype.updateGroup.mockRejectedValue(
           new CustomError('Group not found', 404)
         );
@@ -224,7 +225,7 @@ describe('Transaction Groups (Integration)', () => {
 
     describe('when validation fails', () => {
       it('should return 400 for invalid splitType', async () => {
-        const { CustomError } = jest.requireActual('../core/ApiError');
+        const { CustomError } = jest.requireActual('../shared/core/ApiError');
         MockedService.prototype.updateGroup.mockRejectedValue(
           new CustomError(
             'Invalid splitType. Must be one of: EQUAL_INCLUDE_PAYER, EQUAL_EXCLUDE_PAYER, CUSTOM_AMOUNTS, PERCENTAGE_SPLIT, LOAN, ITEMIZED',
@@ -268,7 +269,7 @@ describe('Transaction Groups (Integration)', () => {
 
     describe('when group is not found', () => {
       it('should return 404', async () => {
-        const { CustomError } = jest.requireActual('../core/ApiError');
+        const { CustomError } = jest.requireActual('../shared/core/ApiError');
         MockedService.prototype.deleteGroup.mockRejectedValue(
           new CustomError('Group not found', 404)
         );
@@ -315,7 +316,7 @@ describe('Transaction Groups (Integration)', () => {
 
     describe('when group is not found', () => {
       it('should return 404', async () => {
-        const { CustomError } = jest.requireActual('../core/ApiError');
+        const { CustomError } = jest.requireActual('../shared/core/ApiError');
         MockedService.prototype.addTransactions.mockRejectedValue(
           new CustomError('Group not found', 404)
         );
@@ -363,7 +364,7 @@ describe('Transaction Groups (Integration)', () => {
 
     describe('when group is not found', () => {
       it('should return 404', async () => {
-        const { CustomError } = jest.requireActual('../core/ApiError');
+        const { CustomError } = jest.requireActual('../shared/core/ApiError');
         MockedService.prototype.removeTransaction.mockRejectedValue(
           new CustomError('Group not found', 404)
         );
