@@ -220,7 +220,12 @@ class TransactionLogsService {
           { category: { $in: otherCategories } },
         ];
       } else if (hasUncategorized) {
-        matchQuery.$or = [{ category: { $exists: false } }];
+        matchQuery.$or = [
+          { category: { $exists: false } },
+          { category: null },
+          { category: '' },
+          { category: 'Others' },
+        ];
       } else {
         matchQuery.category = { $in: categoryArr };
       }
