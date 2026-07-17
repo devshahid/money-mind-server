@@ -37,9 +37,9 @@ class AIController extends ResponseHandler {
     const totalUncategorized = await TransactionLogs.countDocuments(query);
     console.info('[INFO]:: Total Uncategorized Transactions: ', totalUncategorized);
 
-    // Limit to 10 transactions per request to stay within Lambda/API Gateway timeout (29s)
-    // Each batch of 10 takes ~5-10s for the LLM call, so 10 = 1 batch = ~5-10s max
-    const transactions = await TransactionLogs.find(query).limit(10);
+    // Limit to 25 transactions per request to stay within Lambda/API Gateway timeout (29s)
+    // Each batch of 10 takes ~5-10s for the LLM call, so 25 = 1 batch = ~8-12s with gpt-4o-mini
+    const transactions = await TransactionLogs.find(query).limit(25);
 
     if (transactions.length === 0) {
       await this.sendResponse({ message: 'No transactions to categorize', suggestions: [] }, res);
@@ -202,7 +202,7 @@ class AIController extends ResponseHandler {
     // Get user context
     const recentTransactions = await TransactionLogs.find({ userId })
       .sort({ transactionDate: -1 })
-      .limit(10);
+      .limit(25);
 
     const debts = await Debt.find({ userId, 'debtDetails.debtStatus': { $ne: 'PAID' } });
 
@@ -254,7 +254,7 @@ class AIController extends ResponseHandler {
       const chatHistory = await AIChatHistory.findOne({ userId, sessionId: sessionId as string });
       await this.sendResponse({ chatHistory }, res);
     } else {
-      const sessions = await AIChatHistory.find({ userId }).sort({ lastMessageAt: -1 }).limit(10);
+      const sessions = await AIChatHistory.find({ userId }).sort({ lastMessageAt: -1 }).limit(25);
       await this.sendResponse({ sessions }, res);
     }
   });

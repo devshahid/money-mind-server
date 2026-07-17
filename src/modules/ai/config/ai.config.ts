@@ -9,7 +9,7 @@ import { EXPENSE_CATEGORIES, type ExpenseCategory } from '../../../shared/consta
 export const AI_CONFIG = {
   // GitHub Copilot uses GitHub Models API
   GITHUB_TOKEN: process.env.GITHUB_TOKEN || '',
-  GITHUB_MODEL: process.env.GITHUB_MODEL || 'gpt-4o', // GitHub Copilot models
+  GITHUB_MODEL: process.env.GITHUB_MODEL || 'gpt-4o-mini', // GitHub Copilot models
 
   // OpenAI (fallback if not using GitHub)
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',

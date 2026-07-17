@@ -182,7 +182,7 @@ Be precise and consistent. Common patterns:
     const parser = StructuredOutputParser.fromZodSchema(batchCategorizationSchema);
 
     // Process in chunks of 10 to avoid token limits
-    const chunkSize = 10;
+    const chunkSize = 25;
     const results: BatchCategorizationResult[] = [];
 
     for (let i = 0; i < transactions.length; i += chunkSize) {
@@ -232,13 +232,17 @@ Common patterns to recognize:
         format_instructions: parser.getFormatInstructions(),
       });
 
-      const response = await llm.invoke(input);
+      const response = await Promise.race([
+        llm.invoke(input),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('LLM request timed out after 20s')), 20000)
+        ),
+      ]);
       const cleanedResponse = cleanJsonResponse(response.content as string);
 
-      console.log(
+      console.info(
         `✅ LLM batch ${Math.floor(i / chunkSize) + 1} responded - ${chunk.length} transactions, response length: ${cleanedResponse.length} chars`
       );
-
       try {
         const chunkResults = (await parser.parse(cleanedResponse)) as BatchCategorizationResult[];
         results.push(...chunkResults);
