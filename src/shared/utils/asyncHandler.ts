@@ -10,19 +10,29 @@ type AsyncFunction = (
 
 export default (requestHandler: AsyncFunction) =>
   async (req: Request, res: Response, next: NextFunction) => {
-    const session = await mongoose.startSession(); // Start a session
-    session.startTransaction(); // Start the transaction
+    // Ensure connection is ready before starting a session
+    if (mongoose.connection.readyState !== 1) {
+      try {
+        await mongoose.connection.asPromise();
+      } catch (err) {
+        console.error('[ERROR]: MongoDB connection not ready:', err);
+        return next(new Error('Database connection unavailable'));
+      }
+    }
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
     return Promise.resolve(requestHandler(req, res, next, session))
       .then(() => {
-        return session.commitTransaction(); // Commit the transaction if successful
+        return session.commitTransaction();
       })
       .catch(async (err) => {
-        await session.abortTransaction(); // Abort the transaction in case of an error
+        await session.abortTransaction();
         console.error('[ERROR]: AsyncHandler Error: ', err);
-        return next(err); // Pass the error to the next middleware
+        return next(err);
       })
       .finally(() => {
-        session.endSession(); // End the session
+        session.endSession();
       });
   };
