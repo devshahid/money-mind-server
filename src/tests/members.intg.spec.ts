@@ -2,7 +2,7 @@
 import request from 'supertest';
 
 // 1. Mock auth middleware (MUST be before app import)
-jest.mock('../middlewares/auth/authHandler', () => {
+jest.mock('../shared/middlewares/auth/authHandler', () => {
   const { Types } = jest.requireActual('mongoose');
   const testUser = {
     _id: new Types.ObjectId('507f1f77bcf86cd799439011'),
@@ -14,7 +14,7 @@ jest.mock('../middlewares/auth/authHandler', () => {
     default: {
       userAccess: jest.fn((req: any, _res: any, next: any) => {
         if (!req.get('accessToken')) {
-          const { AuthError } = jest.requireActual('../core/ApiError');
+          const { AuthError } = jest.requireActual('../shared/core/ApiError');
           return next(new AuthError('Please provide AccessToken!!'));
         }
         req.user = testUser;
@@ -33,6 +33,7 @@ jest.mock('mongoose', () => {
   const actual = jest.requireActual('mongoose');
   return {
     ...actual,
+    connection: { readyState: 1, asPromise: jest.fn().mockResolvedValue(undefined) },
     startSession: jest.fn().mockResolvedValue({
       startTransaction: jest.fn(),
       commitTransaction: jest.fn().mockResolvedValue(undefined),
@@ -43,7 +44,7 @@ jest.mock('mongoose', () => {
 });
 
 // 3. Mock the service layer
-jest.mock('../services/members.service');
+jest.mock('../modules/members/member.service');
 
 import app from '../app';
 import { MembersService } from '../modules/members/member.service';
@@ -55,16 +56,16 @@ describe('Members (Integration)', () => {
     jest.clearAllMocks();
   });
 
-  // ─── POST /api/v1/members/create ──────────────────────────────────────
+  // ─── POST /api/v1/members ──────────────────────────────────────
 
-  describe('POST /api/v1/members/create', () => {
+  describe('POST /api/v1/members', () => {
     it('should create a member and return 200 with output', async () => {
       const mockMember = { _id: 'm1', name: 'Alice', userId: '507f1f77bcf86cd799439011' };
 
       MockedService.prototype.createMember.mockResolvedValue(mockMember as any);
 
       const res = await request(app)
-        .post('/api/v1/members/create')
+        .post('/api/v1/members')
         .set('accessToken', 'valid-token')
         .send({ name: 'Alice' });
 
@@ -74,7 +75,7 @@ describe('Members (Integration)', () => {
 
     describe('when accessToken is not provided', () => {
       it('should return 401', async () => {
-        const res = await request(app).post('/api/v1/members/create').send({ name: 'Alice' });
+        const res = await request(app).post('/api/v1/members').send({ name: 'Alice' });
 
         expect(res.status).toBe(401);
       });
@@ -82,28 +83,28 @@ describe('Members (Integration)', () => {
 
     describe('when validation fails', () => {
       it('should return 400 when name is empty', async () => {
-        const { CustomError } = jest.requireActual('../core/ApiError');
+        const { CustomError } = jest.requireActual('../shared/core/ApiError');
         MockedService.prototype.createMember.mockRejectedValue(
-          new CustomError('Member name is required', 400)
+          new CustomError('Name is required', 400)
         );
 
         const res = await request(app)
-          .post('/api/v1/members/create')
+          .post('/api/v1/members')
           .set('accessToken', 'valid-token')
           .send({ name: '' });
 
         expect(res.status).toBe(400);
-        expect(res.body.message).toBe('Member name is required');
+        expect(res.body.message).toBe('Name is required');
       });
 
       it('should return 400 when member name already exists', async () => {
-        const { CustomError } = jest.requireActual('../core/ApiError');
+        const { CustomError } = jest.requireActual('../shared/core/ApiError');
         MockedService.prototype.createMember.mockRejectedValue(
           new CustomError('A member with this name already exists', 400)
         );
 
         const res = await request(app)
-          .post('/api/v1/members/create')
+          .post('/api/v1/members')
           .set('accessToken', 'valid-token')
           .send({ name: 'Alice' });
 
@@ -113,9 +114,9 @@ describe('Members (Integration)', () => {
     });
   });
 
-  // ─── GET /api/v1/members/list ─────────────────────────────────────────
+  // ─── GET /api/v1/members ─────────────────────────────────────────
 
-  describe('GET /api/v1/members/list', () => {
+  describe('GET /api/v1/members', () => {
     it('should return all members for the authenticated user', async () => {
       const mockMembers = [
         { _id: 'm1', name: 'Alice' },
@@ -124,7 +125,7 @@ describe('Members (Integration)', () => {
 
       MockedService.prototype.listMembers.mockResolvedValue(mockMembers as any);
 
-      const res = await request(app).get('/api/v1/members/list').set('accessToken', 'valid-token');
+      const res = await request(app).get('/api/v1/members').set('accessToken', 'valid-token');
 
       expect(res.status).toBe(200);
       expect(res.body.output).toEqual(mockMembers);
@@ -132,23 +133,23 @@ describe('Members (Integration)', () => {
 
     describe('when accessToken is not provided', () => {
       it('should return 401', async () => {
-        const res = await request(app).get('/api/v1/members/list');
+        const res = await request(app).get('/api/v1/members');
 
         expect(res.status).toBe(401);
       });
     });
   });
 
-  // ─── DELETE /api/v1/members/delete/:id ────────────────────────────────
+  // ─── DELETE /api/v1/members/:id ────────────────────────────────
 
-  describe('DELETE /api/v1/members/delete/:id', () => {
+  describe('DELETE /api/v1/members/:id', () => {
     it('should delete a member and return success message', async () => {
       const mockResult = { message: 'Member deleted successfully' };
 
       MockedService.prototype.deleteMember.mockResolvedValue(mockResult as any);
 
       const res = await request(app)
-        .delete('/api/v1/members/delete/m1')
+        .delete('/api/v1/members/507f1f77bcf86cd799439011')
         .set('accessToken', 'valid-token');
 
       expect(res.status).toBe(200);
@@ -157,7 +158,7 @@ describe('Members (Integration)', () => {
 
     describe('when accessToken is not provided', () => {
       it('should return 401', async () => {
-        const res = await request(app).delete('/api/v1/members/delete/m1');
+        const res = await request(app).delete('/api/v1/members/507f1f77bcf86cd799439011');
 
         expect(res.status).toBe(401);
       });
@@ -165,13 +166,13 @@ describe('Members (Integration)', () => {
 
     describe('when member is not found', () => {
       it('should return 404', async () => {
-        const { CustomError } = jest.requireActual('../core/ApiError');
+        const { CustomError } = jest.requireActual('../shared/core/ApiError');
         MockedService.prototype.deleteMember.mockRejectedValue(
           new CustomError('Member not found', 404)
         );
 
         const res = await request(app)
-          .delete('/api/v1/members/delete/nonexistent')
+          .delete('/api/v1/members/507f1f77bcf86cd799439022')
           .set('accessToken', 'valid-token');
 
         expect(res.status).toBe(404);
