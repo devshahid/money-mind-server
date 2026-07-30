@@ -21,13 +21,13 @@ export const previewUploadSchema = Joi.object({
 export const fetchTransactionsSchema = Joi.object({
   uploadKey: Joi.string().optional(),
   page: Joi.number().integer().min(1).default(1),
-  limit: Joi.number().integer().min(1).max(100).default(10),
+  limit: Joi.number().integer().min(1).max(100).default(50),
   amount: Joi.number().optional(),
   dateFrom: Joi.date().optional(),
   dateTo: Joi.date().optional(),
   bankName: Joi.string().optional(),
-  transactionType: Joi.string().valid('credit', 'debit').optional(),
-  type: Joi.string().optional(),
+  transactionType: Joi.string().valid('online', 'cash').optional(),
+  type: Joi.string().valid('credit', 'debit').optional(),
   labels: Joi.array().items(Joi.string()).optional(),
   category: Joi.array()
     .items(Joi.string().valid(...EXPENSE_CATEGORIES, 'Uncategorized'))
