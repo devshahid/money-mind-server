@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/devshahid/money-mind-server/compare/v1.0.0...v1.0.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* correct transactionType validation and default pagination limit ([#5](https://github.com/devshahid/money-mind-server/issues/5)) ([f574e54](https://github.com/devshahid/money-mind-server/commit/f574e54d0144412988d5da9443d741e1b0eca843))
+
 # 1.0.0 (2026-07-17)
 
 
