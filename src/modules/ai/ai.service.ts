@@ -178,26 +178,48 @@ Be precise and consistent. Common patterns:
       isCredit: boolean;
     }>
   ): Promise<BatchCategorizationResult[]> {
-    const llm = createLLM(AI_CONFIG.TEMPERATURE_CATEGORIZATION);
-    const parser = StructuredOutputParser.fromZodSchema(batchCategorizationSchema);
-
-    // Process in chunks of 10 to avoid token limits
-    const chunkSize = 25;
     const results: BatchCategorizationResult[] = [];
 
-    for (let i = 0; i < transactions.length; i += chunkSize) {
-      const chunk = transactions.slice(i, i + chunkSize);
+    // Process in chunks of 10 to avoid token limits
+    const chunkSize = 10;
 
-      const prompt = PromptTemplate.fromTemplate(`
-You are a financial transaction categorization expert for Money Mind.
+    const parser = StructuredOutputParser.fromZodSchema(batchCategorizationSchema);
 
-Task: Categorize the following {count} transactions. Return results in the exact order provided.
+    const llm = createLLM(AI_CONFIG.TEMPERATURE_CATEGORIZATION);
 
+    const prompt = PromptTemplate.fromTemplate(`
+You are a highly accurate financial transaction categorization engine for the Money Mind app.
+
+Your task is to categorize {count} transactions into ONE of the provided categories.
+
+========================
+INPUT
+========================
 Transactions:
 {transactions}
 
-Available Categories:
+Categories:
 {categories}
+
+========================
+STRICT RULES
+========================
+1. Return results in EXACT same order as input
+2. Assign ONLY ONE category per transaction
+3. Confidence must be between 0 and 1
+4. If unsure, choose the closest category (DO NOT leave blank)
+5. If no clear match → use "Others"
+6. Keep reasoning VERY SHORT (max 10 words)
+7. Do NOT hallucinate information
+8. Do NOT change transaction text
+
+========================
+NORMALIZATION LOGIC
+========================
+- Ignore case sensitivity
+- Ignore special characters, UPI IDs, reference numbers
+- Focus on merchant name / intent
+
 
 Instructions:
 1. Categorize each transaction with high accuracy
@@ -205,19 +227,28 @@ Instructions:
 3. Give brief reasoning for each
 4. Maintain the exact transaction order in your response
 
-{format_instructions}
-
 Common patterns to recognize:
-- UPI to PAYTM/PHONEPE → Recharge
-- SWIGGY/ZOMATO → Food
-- Petrol/Fuel stations → Fuel
-- FLIPKART/AMAZON → Shopping
-- EMI/LOAN payments → EMI
-- Salary credits → Income
-- Rent transfers → Rent
-- Medical/Hospital → Medical
+- SWIGGY, ZOMATO → Food
+- INDIAN R, IRCTC, UBER, OLA → Travel
+- HP PETROL, INDIAN OIL, BPCL, PETROL, FUEL → Fuel
+- AMAZON, FLIPKART, MEESHO → Shopping
+- RENT, HOUSE RENT → Rent
+- EMI, LOAN, NACH → EMI
+- SALARY, NEFT CREDIT FROM COMPANY → Income
+- APOLLO, MEDICAL, PHARMACY → Medical
+- ELECTRICITY, WATER BILL → Utilities
+- ATM WITHDRAWAL → Cash Withdrawal
+
+This categories are not final, you have to suggest the exact category from the provided data
+
+========================
+OUTPUT FORMAT
+========================
+{format_instructions}
 `);
 
+    for (let i = 0; i < transactions.length; i += chunkSize) {
+      const chunk = transactions.slice(i, i + chunkSize);
       const transactionsText = chunk
         .map(
           (t, idx) =>
@@ -235,7 +266,7 @@ Common patterns to recognize:
       const response = await Promise.race([
         llm.invoke(input),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('LLM request timed out after 20s')), 20000)
+          setTimeout(() => reject(new Error('LLM request timed out after 120s')), 120000)
         ),
       ]);
       const cleanedResponse = cleanJsonResponse(response.content as string);
@@ -246,6 +277,7 @@ Common patterns to recognize:
       try {
         const chunkResults = (await parser.parse(cleanedResponse)) as BatchCategorizationResult[];
         results.push(...chunkResults);
+        console.info('Result: ', results);
       } catch (parseError) {
         console.error('Failed to parse AI response:', cleanedResponse);
         console.error('Parse error:', parseError);

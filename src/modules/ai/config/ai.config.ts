@@ -1,17 +1,19 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { EXPENSE_CATEGORIES, type ExpenseCategory } from '../../../shared/constants';
+import { ChatOllama } from '@langchain/ollama';
+import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 
 /**
  * AI Configuration
- * Supports GitHub Copilot (via GitHub Models) and OpenAI
+ * Supports Ollama (local), OpenAI, or any OpenAI-compatible API
  */
 
 export const AI_CONFIG = {
-  // GitHub Copilot uses GitHub Models API
-  GITHUB_TOKEN: process.env.GITHUB_TOKEN || '',
-  GITHUB_MODEL: process.env.GITHUB_MODEL || 'gpt-4o-mini', // GitHub Copilot models
+  // Ollama (local LLM) — native API (no /v1 suffix)
+  OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
+  OLLAMA_MODEL: process.env.OLLAMA_MODEL || 'qwen3:8b',
 
-  // OpenAI (fallback if not using GitHub)
+  // OpenAI (cloud fallback)
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
   OPENAI_MODEL: process.env.OPENAI_MODEL || 'gpt-4o-mini',
 
@@ -23,36 +25,30 @@ export const AI_CONFIG = {
 
 /**
  * Create LangChain LLM instance
- * Supports both GitHub Copilot and OpenAI
+ * Priority: Ollama (local) → OpenAI (cloud)
  */
-export function createLLM(temperature = 0.7, useGitHub = true): ChatOpenAI {
-  if (useGitHub && AI_CONFIG.GITHUB_TOKEN) {
-    console.log('🤖 Using GitHub Copilot Models API');
-    // Using GitHub Copilot via GitHub Models API
-    return new ChatOpenAI({
-      modelName: AI_CONFIG.GITHUB_MODEL,
+export function createLLM(temperature = 0.7): BaseChatModel {
+  if (AI_CONFIG.OLLAMA_BASE_URL) {
+    console.info(`🤖 Using Ollama -> ${AI_CONFIG.OLLAMA_MODEL}`);
+    return new ChatOllama({
+      model: AI_CONFIG.OLLAMA_MODEL,
+      baseUrl: AI_CONFIG.OLLAMA_BASE_URL,
       temperature,
-      timeout: 25000, // 25s timeout to stay within API Gateway 29s limit
-      apiKey: AI_CONFIG.GITHUB_TOKEN,
-      configuration: {
-        baseURL: 'https://models.inference.ai.azure.com',
-      },
     });
   }
 
   if (AI_CONFIG.OPENAI_API_KEY) {
     console.log('🤖 Using OpenAI API');
-    // Fallback to OpenAI
     return new ChatOpenAI({
       modelName: AI_CONFIG.OPENAI_MODEL,
       temperature,
-      timeout: 25000, // 25s timeout to stay within API Gateway 29s limit
+      timeout: 25000,
       apiKey: AI_CONFIG.OPENAI_API_KEY,
     });
   }
 
   throw new Error(
-    'No AI API credentials configured. Please set GITHUB_TOKEN or OPENAI_API_KEY in .env file'
+    'No AI provider configured. Please ensure Ollama is running or set OPENAI_API_KEY in .env file'
   );
 }
 

@@ -85,6 +85,53 @@ aiRoute.post(
 
 /**
  * @openapi
+ * /api/v1/ai/suggest-categories/status/{jobId}:
+ *   get:
+ *     tags:
+ *       - AI
+ *     summary: Poll categorization job status
+ *     description: Check the status and results of a running categorization job
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: jobId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Job status retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 jobId:
+ *                   type: string
+ *                 status:
+ *                   type: string
+ *                   enum: [pending, processing, completed, failed]
+ *                 progress:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: number
+ *                     processed:
+ *                       type: number
+ *                 suggestions:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/CategorySuggestion'
+ */
+aiRoute.get(
+  '/suggest-categories/status/:jobId',
+  authHandler.userAccess,
+  aiController.getCategorizationJobStatus
+);
+
+/**
+ * @openapi
  * /api/v1/ai/apply-suggestions:
  *   post:
  *     tags:

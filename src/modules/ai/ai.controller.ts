@@ -4,16 +4,17 @@ import { CustomRequest } from '../../shared/middlewares/auth/authHandler';
 import { Response } from 'express';
 import { CustomError } from '../../shared/core/ApiError';
 import aiService from './ai.service';
-import { TransactionLogs } from '../transactions/models/transaction-logs.model';
+import { TransactionLogs, ITransactionLogs } from '../transactions/models/transaction-logs.model';
 import { Debt } from '../debts/models/debts.model';
 import { Budget } from '../budgets/models/budget.model';
 import { AIChatHistory } from './models/ai-chat-history.model';
+import { CategorizationJob } from './models/categorization-job.model';
 import dayjs from 'dayjs';
 import { v4 as uuidv4 } from 'uuid';
 
 class AIController extends ResponseHandler {
   /**
-   * Get AI category suggestions (doesn't auto-apply)
+   * Start AI category suggestion job (async — returns immediately with jobId)
    * POST /api/v1/ai/suggest-categories
    * Body: { transactionIds: string[] } or { all: true }
    */
@@ -22,6 +23,37 @@ class AIController extends ResponseHandler {
 
     const userId = req.user._id;
     const { transactionIds, all } = req.body;
+
+    // Deduplication: check if there's already an active job for this user
+    // Jobs older than 5 minutes are considered stale (server may have restarted)
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const existingJob = await CategorizationJob.findOne({
+      userId,
+      status: { $in: ['pending', 'processing'] },
+      createdAt: { $gt: fiveMinutesAgo },
+    });
+
+    if (existingJob) {
+      await this.sendResponse(
+        {
+          message: 'A categorization job is already in progress',
+          jobId: existingJob._id.toString(),
+          status: existingJob.status,
+          progress: {
+            total: existingJob.totalTransactions,
+            processed: existingJob.processedTransactions,
+          },
+        },
+        res
+      );
+      return;
+    }
+
+    // Clean up any stale jobs for this user before starting a new one
+    await CategorizationJob.updateMany(
+      { userId, status: { $in: ['pending', 'processing'] }, createdAt: { $lte: fiveMinutesAgo } },
+      { status: 'failed', error: 'Job timed out', completedAt: new Date() }
+    );
 
     // Find transactions to categorize
     const query: Record<string, unknown> = { userId };
@@ -33,61 +65,180 @@ class AIController extends ResponseHandler {
       throw new CustomError('Please provide transactionIds or set all=true');
     }
 
-    // Count total matching for pagination info
-    const totalUncategorized = await TransactionLogs.countDocuments(query);
-    console.info('[INFO]:: Total Uncategorized Transactions: ', totalUncategorized);
-
-    // Limit to 25 transactions per request to stay within Lambda/API Gateway timeout (29s)
-    // Each batch of 10 takes ~5-10s for the LLM call, so 25 = 1 batch = ~8-12s with gpt-4o-mini
-    const transactions = await TransactionLogs.find(query).limit(25);
+    const transactions = await TransactionLogs.find(query);
 
     if (transactions.length === 0) {
-      await this.sendResponse({ message: 'No transactions to categorize', suggestions: [] }, res);
+      await this.sendResponse(
+        {
+          message: 'No transactions to categorize',
+          jobId: null,
+          status: 'completed',
+          suggestions: [],
+        },
+        res
+      );
       return;
     }
 
-    const transactionsData = transactions.map((t) => ({
-      id: t._id.toString(),
-      narration: t.narration || '',
-      amount: t.amount || 0,
-      isCredit: t.isCredit || false,
-      currentCategory: t.category || '',
-    }));
-
-    console.info('[INFO]:: Before call ');
-    // Calling LLM model to identify the category of the transaction
-    const categorizations = await aiService.categorizeTransactionsBatch(transactionsData);
-    console.info('[INFO]:: LLM response -> ', categorizations);
-    console.info(
-      `✅ AI categorization complete - ${categorizations.length} results for ${transactionsData.length} transactions`
-    );
-
-    // Return suggestions with transaction details
-    const suggestions = categorizations.map((cat) => {
-      const transaction = transactions.find((t) => t._id.toString() === cat.transactionId);
-      return {
-        transactionId: cat.transactionId,
-        narration: transaction?.narration || '',
-        amount: transaction?.amount || 0,
-        isCredit: transaction?.isCredit || false,
-        currentCategory: transaction?.category || '',
-        suggestedCategory: cat.category,
-        confidence: cat.confidence,
-        reasoning: cat.reasoning,
-      };
+    // Create job record
+    const job = await CategorizationJob.create({
+      userId,
+      status: 'pending',
+      totalTransactions: transactions.length,
+      processedTransactions: 0,
+      suggestions: [],
     });
 
-    console.info(
-      `[INFO]:: Sending suggest-categories response - ${suggestions.length} suggestions`
+    // Kick off background processing (fire-and-forget)
+    this.processCategorizationJob(job._id.toString(), transactions).catch((err) => {
+      console.error('[ERROR]:: Background categorization job failed:', err);
+    });
+
+    // Return immediately with jobId
+    await this.sendResponse(
+      {
+        message: `Categorization job started for ${transactions.length} transactions`,
+        jobId: job._id.toString(),
+        status: 'pending',
+        progress: {
+          total: transactions.length,
+          processed: 0,
+        },
+      },
+      res
     );
+  });
+
+  /**
+   * Background processor for categorization job.
+   * Processes chunks and updates job progress incrementally.
+   */
+  private async processCategorizationJob(
+    jobId: string,
+    transactions: ITransactionLogs[]
+  ): Promise<void> {
+    try {
+      await CategorizationJob.findByIdAndUpdate(jobId, {
+        status: 'processing',
+        startedAt: new Date(),
+      });
+
+      const transactionsData = transactions.map((t) => ({
+        id: t._id.toString(),
+        narration: t.narration,
+        amount: Number(t.amount),
+        isCredit: t.isCredit || false,
+        currentCategory: t.category || '',
+      }));
+
+      // Process in chunks — update progress after each chunk
+      const chunkSize = 10;
+      const allSuggestions: Array<{
+        transactionId: string;
+        narration: string;
+        amount: number;
+        isCredit: boolean;
+        currentCategory: string;
+        suggestedCategory: string;
+        confidence: number;
+        reasoning: string;
+        transactionDate: string | null;
+        bankName: string;
+      }> = [];
+
+      for (let i = 0; i < transactionsData.length; i += chunkSize) {
+        const chunk = transactionsData.slice(i, i + chunkSize);
+
+        try {
+          const categorizations = await aiService.categorizeTransactionsBatch(chunk);
+
+          const chunkSuggestions = categorizations.map((cat) => {
+            const transaction = transactions.find((t) => t._id.toString() === cat.transactionId);
+            return {
+              transactionId: cat.transactionId,
+              narration: transaction?.narration || '',
+              amount: Number(transaction?.amount || 0),
+              isCredit: transaction?.isCredit || false,
+              currentCategory: transaction?.category || '',
+              suggestedCategory: cat.category,
+              confidence: cat.confidence,
+              reasoning: cat.reasoning,
+              transactionDate: transaction?.transactionDate?.toISOString() || null,
+              bankName: transaction?.bankName || '',
+            };
+          });
+
+          allSuggestions.push(...chunkSuggestions);
+
+          // Update progress incrementally
+          await CategorizationJob.findByIdAndUpdate(jobId, {
+            processedTransactions: Math.min(i + chunkSize, transactionsData.length),
+            suggestions: allSuggestions,
+          });
+
+          console.info(
+            `[JOB ${jobId}] Processed ${Math.min(i + chunkSize, transactionsData.length)}/${transactionsData.length} transactions`
+          );
+        } catch (chunkError) {
+          console.error(`[JOB ${jobId}] Chunk ${i / chunkSize + 1} failed:`, chunkError);
+          // Continue with next chunk — partial results are still useful
+        }
+      }
+
+      // Mark job as completed
+      await CategorizationJob.findByIdAndUpdate(jobId, {
+        status: 'completed',
+        processedTransactions: transactionsData.length,
+        suggestions: allSuggestions,
+        completedAt: new Date(),
+      });
+
+      console.info(
+        `[JOB ${jobId}] ✅ Completed — ${allSuggestions.length} suggestions for ${transactionsData.length} transactions`
+      );
+    } catch (error) {
+      console.error(`[JOB ${jobId}] ❌ Failed:`, error);
+      await CategorizationJob.findByIdAndUpdate(jobId, {
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        completedAt: new Date(),
+      });
+    }
+  }
+
+  /**
+   * Poll categorization job status and results
+   * GET /api/v1/ai/suggest-categories/status/:jobId
+   */
+  getCategorizationJobStatus = asyncHandler(async (req: CustomRequest, res: Response) => {
+    if (!req.user?._id) throw new CustomError('Please login first!!');
+
+    const { jobId } = req.params;
+    const userId = req.user._id;
+
+    const job = await CategorizationJob.findOne({ _id: jobId, userId });
+
+    if (!job) {
+      throw new CustomError('Job not found');
+    }
 
     await this.sendResponse(
       {
-        message: `Generated ${suggestions.length} AI category suggestions`,
-        total: suggestions.length,
-        totalUncategorized,
-        hasMore: totalUncategorized > suggestions.length,
-        suggestions,
+        jobId: job._id.toString(),
+        status: job.status,
+        progress: {
+          total: job.totalTransactions,
+          processed: job.processedTransactions,
+        },
+        ...(job.status === 'completed' && {
+          message: `Generated ${job.suggestions.length} AI category suggestions`,
+          total: job.suggestions.length,
+          totalUncategorized: job.totalTransactions,
+          suggestions: job.suggestions,
+        }),
+        ...(job.status === 'failed' && {
+          error: job.error,
+        }),
       },
       res
     );
