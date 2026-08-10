@@ -27,6 +27,32 @@ jest.mock('../ai.service', () => ({
   },
 }));
 
+// Mock the CategorizationJob model for async job pattern
+jest.mock('../models/categorization-job.model', () => {
+  const mockJobDoc = {
+    _id: { toString: () => 'mock-job-id' },
+    userId: null,
+    status: 'pending',
+    totalTransactions: 0,
+    processedTransactions: 0,
+    suggestions: [],
+    save: jest.fn(),
+  };
+
+  return {
+    CategorizationJob: {
+      findOne: jest.fn().mockResolvedValue(null), // No existing job (no deduplication block)
+      create: jest.fn().mockImplementation((data: Record<string, unknown>) => ({
+        ...mockJobDoc,
+        ...data,
+        _id: { toString: () => 'mock-job-id' },
+      })),
+      findByIdAndUpdate: jest.fn().mockResolvedValue(null),
+      updateMany: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
+    },
+  };
+});
+
 describe('AI Suggest Categories - Integration Tests', () => {
   let app: Express;
   let authToken: string;
@@ -68,8 +94,7 @@ describe('AI Suggest Categories - Integration Tests', () => {
   });
 
   describe('POST /api/v1/ai/suggest-categories', () => {
-    it('should return suggestions with isCredit field', async () => {
-      const aiService = require('../ai.service').default;
+    it('should return a jobId when starting categorization', async () => {
       const txId = new Types.ObjectId();
 
       await TransactionLogs.create({
@@ -85,52 +110,41 @@ describe('AI Suggest Categories - Integration Tests', () => {
         hashMap: 'unique-hash-1',
       });
 
-      aiService.categorizeTransactionsBatch.mockResolvedValue([
-        {
-          transactionId: txId.toString(),
-          category: 'Food',
-          confidence: 0.95,
-          reasoning: 'Food delivery',
-        },
-      ]);
-
       const res = await request(app)
         .post('/api/v1/ai/suggest-categories')
         .set('accessToken', authToken)
         .send({ transactionIds: [txId.toString()] });
 
       expect(res.status).toBe(200);
-      expect(res.body.output.suggestions).toHaveLength(1);
-      expect(res.body.output.suggestions[0]).toHaveProperty('isCredit', false);
-      expect(res.body.output.suggestions[0]).toHaveProperty('amount', 350);
-      expect(res.body.output.suggestions[0]).toHaveProperty('suggestedCategory', 'Food');
+      expect(res.body.output).toHaveProperty('jobId');
+      expect(res.body.output).toHaveProperty('status', 'pending');
+      expect(res.body.output.progress).toEqual({ total: 1, processed: 0 });
     });
 
-    it('should return isCredit=true for credit transactions', async () => {
-      const aiService = require('../ai.service').default;
+    it('should return existing jobId if a job is already in progress', async () => {
+      const { CategorizationJob } = require('../models/categorization-job.model');
       const txId = new Types.ObjectId();
 
       await TransactionLogs.create({
         _id: txId,
         userId: testUserId,
-        narration: 'SALARY CREDIT',
-        amount: 50000,
-        isCredit: true,
+        narration: 'Test transaction',
+        amount: 100,
+        isCredit: false,
         category: '',
         status: 'PENDING',
         transactionDate: new Date(),
         bankName: 'HDFC',
-        hashMap: 'unique-hash-2',
+        hashMap: 'unique-hash-dedup',
       });
 
-      aiService.categorizeTransactionsBatch.mockResolvedValue([
-        {
-          transactionId: txId.toString(),
-          category: 'Income',
-          confidence: 0.98,
-          reasoning: 'Salary credit',
-        },
-      ]);
+      // Mock an existing active job
+      CategorizationJob.findOne.mockResolvedValueOnce({
+        _id: { toString: () => 'existing-job-id' },
+        status: 'processing',
+        totalTransactions: 5,
+        processedTransactions: 2,
+      });
 
       const res = await request(app)
         .post('/api/v1/ai/suggest-categories')
@@ -138,7 +152,8 @@ describe('AI Suggest Categories - Integration Tests', () => {
         .send({ transactionIds: [txId.toString()] });
 
       expect(res.status).toBe(200);
-      expect(res.body.output.suggestions[0].isCredit).toBe(true);
+      expect(res.body.output.jobId).toBe('existing-job-id');
+      expect(res.body.output.status).toBe('processing');
     });
 
     it('should return 400 without transactionIds or all', async () => {
@@ -150,49 +165,16 @@ describe('AI Suggest Categories - Integration Tests', () => {
       expect(res.status).toBe(400);
     });
 
-    it('should limit to 25 transactions per request', async () => {
-      const aiService = require('../ai.service').default;
-      const txIds: Types.ObjectId[] = [];
-
-      // Create 30 uncategorized transactions
-      for (let i = 0; i < 30; i++) {
-        const txId = new Types.ObjectId();
-        txIds.push(txId);
-        await TransactionLogs.create({
-          _id: txId,
-          userId: testUserId,
-          narration: `Transaction ${i}`,
-          amount: 100 + i,
-          isCredit: false,
-          category: '',
-          status: 'PENDING',
-          transactionDate: new Date(),
-          bankName: 'HDFC',
-          hashMap: `unique-hash-${i}`,
-        });
-      }
-
-      aiService.categorizeTransactionsBatch.mockResolvedValue(
-        txIds.slice(0, 25).map((id) => ({
-          transactionId: id.toString(),
-          category: 'Other',
-          confidence: 0.5,
-          reasoning: 'Unknown',
-        }))
-      );
-
+    it('should return empty result when no transactions to categorize', async () => {
       const res = await request(app)
         .post('/api/v1/ai/suggest-categories')
         .set('accessToken', authToken)
-        .send({ all: true });
+        .send({ transactionIds: [new Types.ObjectId().toString()] });
 
       expect(res.status).toBe(200);
-      // Should be limited to 25
-      expect(aiService.categorizeTransactionsBatch).toHaveBeenCalledWith(
-        expect.arrayContaining([expect.objectContaining({ narration: expect.any(String) })])
-      );
-      const callArg = aiService.categorizeTransactionsBatch.mock.calls[0][0];
-      expect(callArg.length).toBeLessThanOrEqual(25);
+      expect(res.body.output.jobId).toBeNull();
+      expect(res.body.output.status).toBe('completed');
+      expect(res.body.output.suggestions).toEqual([]);
     });
   });
 

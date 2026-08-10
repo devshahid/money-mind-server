@@ -16,6 +16,12 @@ jest.mock('@langchain/openai', () => ({
   })),
 }));
 
+jest.mock('@langchain/ollama', () => ({
+  ChatOllama: jest.fn().mockImplementation(() => ({
+    invoke: jest.fn(),
+  })),
+}));
+
 jest.mock('@langchain/core/prompts', () => ({
   PromptTemplate: {
     fromTemplate: jest.fn().mockReturnValue({
@@ -52,9 +58,9 @@ describe('AIService (Unit Tests)', () => {
       };
 
       // Mock the LLM invoke call
-      const { ChatOpenAI } = require('@langchain/openai');
+      const { ChatOllama } = require('@langchain/ollama');
       const mockInvoke = jest.fn().mockResolvedValue(mockLLMResponse);
-      ChatOpenAI.mockImplementation(() => ({
+      ChatOllama.mockImplementation(() => ({
         invoke: mockInvoke,
       }));
 
@@ -90,9 +96,9 @@ describe('AIService (Unit Tests)', () => {
         }),
       };
 
-      const { ChatOpenAI } = require('@langchain/openai');
+      const { ChatOllama } = require('@langchain/ollama');
       const mockInvoke = jest.fn().mockResolvedValue(mockLLMResponse);
-      ChatOpenAI.mockImplementation(() => ({
+      ChatOllama.mockImplementation(() => ({
         invoke: mockInvoke,
       }));
 
@@ -126,9 +132,9 @@ describe('AIService (Unit Tests)', () => {
         }),
       };
 
-      const { ChatOpenAI } = require('@langchain/openai');
+      const { ChatOllama } = require('@langchain/ollama');
       const mockInvoke = jest.fn().mockResolvedValue(mockLLMResponse);
-      ChatOpenAI.mockImplementation(() => ({
+      ChatOllama.mockImplementation(() => ({
         invoke: mockInvoke,
       }));
 
@@ -154,8 +160,8 @@ describe('AIService (Unit Tests)', () => {
 
     it('should handle LLM errors gracefully', async () => {
       // Arrange
-      const { ChatOpenAI } = require('@langchain/openai');
-      ChatOpenAI.mockImplementation(() => ({
+      const { ChatOllama } = require('@langchain/ollama');
+      ChatOllama.mockImplementation(() => ({
         invoke: jest.fn().mockRejectedValue(new Error('LLM API Error')),
       }));
 
@@ -186,9 +192,9 @@ describe('AIService (Unit Tests)', () => {
         ]),
       };
 
-      const { ChatOpenAI } = require('@langchain/openai');
+      const { ChatOllama } = require('@langchain/ollama');
       const mockInvoke = jest.fn().mockResolvedValue(mockLLMResponse);
-      ChatOpenAI.mockImplementation(() => ({
+      ChatOllama.mockImplementation(() => ({
         invoke: mockInvoke,
       }));
 
@@ -248,9 +254,9 @@ describe('AIService (Unit Tests)', () => {
         ]),
       };
 
-      const { ChatOpenAI } = require('@langchain/openai');
+      const { ChatOllama } = require('@langchain/ollama');
       const mockInvoke = jest.fn().mockResolvedValue(mockLLMResponse);
-      ChatOpenAI.mockImplementation(() => ({
+      ChatOllama.mockImplementation(() => ({
         invoke: mockInvoke,
       }));
 
@@ -310,9 +316,9 @@ describe('AIService (Unit Tests)', () => {
         }),
       };
 
-      const { ChatOpenAI } = require('@langchain/openai');
+      const { ChatOllama } = require('@langchain/ollama');
       const mockInvoke = jest.fn().mockResolvedValue(mockLLMResponse);
-      ChatOpenAI.mockImplementation(() => ({
+      ChatOllama.mockImplementation(() => ({
         invoke: mockInvoke,
       }));
 
@@ -361,9 +367,9 @@ describe('AIService (Unit Tests)', () => {
         }),
       };
 
-      const { ChatOpenAI } = require('@langchain/openai');
+      const { ChatOllama } = require('@langchain/ollama');
       const mockInvoke = jest.fn().mockResolvedValue(mockLLMResponse);
-      ChatOpenAI.mockImplementation(() => ({
+      ChatOllama.mockImplementation(() => ({
         invoke: mockInvoke,
       }));
 
@@ -406,9 +412,9 @@ describe('AIService (Unit Tests)', () => {
         }),
       };
 
-      const { ChatOpenAI } = require('@langchain/openai');
+      const { ChatOllama } = require('@langchain/ollama');
       const mockInvoke = jest.fn().mockResolvedValue(mockLLMResponse);
-      ChatOpenAI.mockImplementation(() => ({
+      ChatOllama.mockImplementation(() => ({
         invoke: mockInvoke,
       }));
 
@@ -445,9 +451,9 @@ describe('AIService (Unit Tests)', () => {
         content: 'Based on your spending, I recommend creating a budget.',
       };
 
-      const { ChatOpenAI } = require('@langchain/openai');
+      const { ChatOllama } = require('@langchain/ollama');
       const mockInvoke = jest.fn().mockResolvedValue(mockLLMResponse);
-      ChatOpenAI.mockImplementation(() => ({
+      ChatOllama.mockImplementation(() => ({
         invoke: mockInvoke,
       }));
 
@@ -467,9 +473,9 @@ describe('AIService (Unit Tests)', () => {
         content: 'Your total expenses are $3000.',
       };
 
-      const { ChatOpenAI } = require('@langchain/openai');
+      const { ChatOllama } = require('@langchain/ollama');
       const mockInvoke = jest.fn().mockResolvedValue(mockLLMResponse);
-      ChatOpenAI.mockImplementation(() => ({
+      ChatOllama.mockImplementation(() => ({
         invoke: mockInvoke,
       }));
 

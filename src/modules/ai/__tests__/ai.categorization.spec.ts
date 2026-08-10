@@ -15,6 +15,11 @@ jest.mock('@langchain/openai', () => ({
     invoke: jest.fn(),
   })),
 }));
+jest.mock('@langchain/ollama', () => ({
+  ChatOllama: jest.fn().mockImplementation(() => ({
+    invoke: jest.fn(),
+  })),
+}));
 jest.mock('@langchain/core/prompts', () => ({
   PromptTemplate: {
     fromTemplate: jest.fn().mockReturnValue({
@@ -46,6 +51,8 @@ describe('AI Categorization - New Features', () => {
         amount: 50000,
         isCredit: true,
         category: '',
+        transactionDate: new Date('2026-08-01'),
+        bankName: 'HDFC',
       };
 
       // Simulate the response mapping logic from ai.controller.ts
@@ -58,10 +65,14 @@ describe('AI Categorization - New Features', () => {
         suggestedCategory: 'Income',
         confidence: 0.95,
         reasoning: 'Salary credit',
+        transactionDate: transaction.transactionDate?.toISOString() || null,
+        bankName: transaction.bankName || '',
       };
 
       expect(suggestion.isCredit).toBe(true);
       expect(suggestion.amount).toBe(50000);
+      expect(suggestion.transactionDate).toBeDefined();
+      expect(suggestion.bankName).toBe('HDFC');
     });
 
     it('should include isCredit=false for debit transactions', () => {
@@ -71,6 +82,8 @@ describe('AI Categorization - New Features', () => {
         amount: 350,
         isCredit: false,
         category: '',
+        transactionDate: new Date('2026-07-15'),
+        bankName: 'ICICI',
       };
 
       const suggestion = {
@@ -82,9 +95,12 @@ describe('AI Categorization - New Features', () => {
         suggestedCategory: 'Food',
         confidence: 0.92,
         reasoning: 'Food delivery',
+        transactionDate: transaction.transactionDate?.toISOString() || null,
+        bankName: transaction.bankName || '',
       };
 
       expect(suggestion.isCredit).toBe(false);
+      expect(suggestion.bankName).toBe('ICICI');
     });
 
     it('should default isCredit to false when field is missing', () => {
@@ -104,9 +120,13 @@ describe('AI Categorization - New Features', () => {
         suggestedCategory: 'Other',
         confidence: 0.5,
         reasoning: 'Unknown transaction',
+        transactionDate: (transaction as any).transactionDate?.toISOString() || null,
+        bankName: (transaction as any).bankName || '',
       };
 
       expect(suggestion.isCredit).toBe(false);
+      expect(suggestion.transactionDate).toBeNull();
+      expect(suggestion.bankName).toBe('');
     });
   });
 
