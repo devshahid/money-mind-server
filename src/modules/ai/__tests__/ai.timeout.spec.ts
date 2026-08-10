@@ -12,7 +12,7 @@ describe('AI LLM Timeout Handling', () => {
         setTimeout(() => resolve('success'), 100)
       );
       const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('LLM request timed out after 20s')), 20000)
+        setTimeout(() => reject(new Error('LLM request timed out after 120s')), 120000)
       );
 
       const result = await Promise.race([mockLLMCall, timeout]);
@@ -24,11 +24,11 @@ describe('AI LLM Timeout Handling', () => {
         (resolve) => setTimeout(() => resolve('success'), 5000) // Would take 5s
       );
       const timeout = new Promise<never>(
-        (_, reject) => setTimeout(() => reject(new Error('LLM request timed out after 20s')), 100) // Timeout at 100ms for test
+        (_, reject) => setTimeout(() => reject(new Error('LLM request timed out after 120s')), 100) // Timeout at 100ms for test
       );
 
       await expect(Promise.race([mockLLMCall, timeout])).rejects.toThrow(
-        'LLM request timed out after 20s'
+        'LLM request timed out after 120s'
       );
     });
 
@@ -37,7 +37,7 @@ describe('AI LLM Timeout Handling', () => {
         setTimeout(() => reject(new Error('Rate limit exceeded')), 50)
       );
       const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('LLM request timed out after 20s')), 20000)
+        setTimeout(() => reject(new Error('LLM request timed out after 120s')), 120000)
       );
 
       await expect(Promise.race([mockLLMCall, timeout])).rejects.toThrow('Rate limit exceeded');
