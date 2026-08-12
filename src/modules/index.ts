@@ -6,6 +6,7 @@
 export { aiRoute } from './ai/ai.routes';
 export { transactionLogsRoute } from './transactions/transaction.routes';
 export { transactionGroupsRoute } from './transactions/transaction-group.routes';
+export { ledgerRoute } from './transactions/ledger.routes';
 export { debtRoute } from './debts/debt.routes';
 export { budgetsRoute } from './budgets/budget.routes';
 export { goalsRoute } from './goals/goal.routes';
