@@ -7,6 +7,7 @@ import { Debt, IDebtDetails } from '../models/debts.model';
 import { DebtPayment } from '../models/debt-payment.model';
 import { RepaymentSchedule } from '../models/repayment-schedule.model';
 import { DebtTransactionLink } from '../models/debt-transaction-link.model';
+import { TransactionLogs } from '../../transactions/models/transaction-logs.model';
 import { CustomError } from '../../../shared/core/ApiError';
 
 // Mock dependencies
@@ -14,6 +15,7 @@ jest.mock('../models/debts.model');
 jest.mock('../models/debt-payment.model');
 jest.mock('../models/repayment-schedule.model');
 jest.mock('../models/debt-transaction-link.model');
+jest.mock('../../transactions/models/transaction-logs.model');
 jest.mock('../../../utils/common');
 
 describe('DebtService (Unit Tests)', () => {
@@ -1031,6 +1033,8 @@ describe('DebtService (Unit Tests)', () => {
       };
 
       (Debt.findOne as jest.Mock).mockResolvedValue(mockDebt);
+      // Ownership check: the transaction belongs to the caller.
+      (TransactionLogs.findOne as jest.Mock).mockResolvedValue(mockTransaction);
       (DebtTransactionLink.findOne as jest.Mock).mockResolvedValue(null);
       (DebtTransactionLink.create as jest.Mock).mockResolvedValue(mockLink);
 
@@ -1070,6 +1074,7 @@ describe('DebtService (Unit Tests)', () => {
       };
 
       (Debt.findOne as jest.Mock).mockResolvedValue(mockDebt);
+      (TransactionLogs.findOne as jest.Mock).mockResolvedValue(mockTransaction);
       (DebtTransactionLink.findOne as jest.Mock).mockResolvedValue(null);
       (DebtTransactionLink.create as jest.Mock).mockResolvedValue(mockLink);
 
@@ -1105,6 +1110,7 @@ describe('DebtService (Unit Tests)', () => {
       };
 
       (Debt.findOne as jest.Mock).mockResolvedValue(mockDebt);
+      (TransactionLogs.findOne as jest.Mock).mockResolvedValue(mockTransaction);
       (DebtTransactionLink.findOne as jest.Mock).mockResolvedValue(existingLink);
 
       await expect(
@@ -1128,6 +1134,29 @@ describe('DebtService (Unit Tests)', () => {
           mockUserId
         )
       ).rejects.toThrow('Debt not found');
+    });
+
+    it('should throw when the transaction does not belong to the caller (ownership check)', async () => {
+      const mockDebt = {
+        _id: new Types.ObjectId(),
+        userId: mockUserId,
+      };
+
+      (Debt.findOne as jest.Mock).mockResolvedValue(mockDebt);
+      // Transaction lookup scoped to { _id, userId } finds nothing → not owned.
+      (TransactionLogs.findOne as jest.Mock).mockResolvedValue(null);
+
+      await expect(
+        service.linkTransactionToDebtService(
+          mockDebt._id.toString(),
+          mockTransaction._id.toString(),
+          'MANUAL',
+          mockUserId
+        )
+      ).rejects.toThrow('Transaction not found');
+
+      // Must not create a link to a foreign transaction.
+      expect(DebtTransactionLink.create).not.toHaveBeenCalled();
     });
   });
 
@@ -1361,6 +1390,8 @@ describe('DebtService (Unit Tests)', () => {
 
       (Debt.findOne as jest.Mock).mockResolvedValue(mockDebt);
       (RepaymentSchedule.findOne as jest.Mock).mockResolvedValue(mockSchedule);
+      // Ownership check: the linked transaction belongs to the caller.
+      (TransactionLogs.findOne as jest.Mock).mockResolvedValue({ _id: transactionId });
 
       const result = await service.updateScheduleItemService(
         mockDebt._id.toString(),

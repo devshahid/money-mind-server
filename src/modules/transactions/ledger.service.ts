@@ -67,6 +67,7 @@ class LedgerService {
 
     const entries = await LedgerEntry.find({
       ledgerId: ledger.clientId,
+      userId: this.userId,
     }).sort({ createdAt: -1 });
 
     return {
@@ -130,9 +131,12 @@ class LedgerService {
     const canonicalLedgerId = ledger.clientId;
 
     // Duplicate-prevention: a transaction may be linked to a ledger only once.
+    // Scope by userId too (defense-in-depth); the parent ledger is already
+    // owner-checked above, so this does not change behaviour.
     const dup = await LedgerEntry.findOne({
       ledgerId: canonicalLedgerId,
       transactionId,
+      userId: this.userId,
     });
     if (dup) {
       throw new CustomError(
@@ -144,6 +148,7 @@ class LedgerService {
     const now = new Date().toISOString();
     const entry = await LedgerEntry.create({
       id: entryId || `entry_${Date.now()}_${Math.random()}`,
+      userId: this.userId,
       ledgerId: canonicalLedgerId,
       transactionId,
       direction,
@@ -171,10 +176,12 @@ class LedgerService {
     });
     if (!ledger) return;
 
-    // Entries are keyed by the ledger's clientId (canonical id)
+    // Entries are keyed by the ledger's clientId (canonical id). Scope by
+    // userId too (defense-in-depth); the parent ledger is already owner-checked.
     const entry = await LedgerEntry.findOneAndDelete({
       id: entryId,
       ledgerId: ledger.clientId,
+      userId: this.userId,
     });
 
     if (entry) {
@@ -204,16 +211,6 @@ class LedgerService {
         const result = await Ledger.findOneAndDelete({
           userId: this.userId,
           clientId,
-        });
-        if (result) deleted++;
-      }
-    }
-
-    // Delete entries that were removed locally
-    if (deletedEntryIds.length > 0) {
-      for (const entryId of deletedEntryIds) {
-        const result = await LedgerEntry.findOneAndDelete({
-          id: entryId,
         });
         if (result) deleted++;
       }
@@ -251,12 +248,47 @@ class LedgerService {
       }
     }
 
+    // Resolve the set of ledger clientIds this caller owns. Computed AFTER the
+    // ledger upserts above so ledgers created in THIS same sync are included.
+    // Every entry delete/create/update below is constrained to this set so a
+    // caller can never touch an entry on a ledger they do not own (the IDOR
+    // this fix closes). LedgerEntry now also carries userId (defense-in-depth),
+    // so the actual writes filter by userId as well.
+    const ownedLedgers = await Ledger.find({ userId: this.userId }).select('clientId').lean();
+    const ownedClientIds = new Set<string>(
+      ownedLedgers.map((l) => (l as { clientId: string }).clientId)
+    );
+
+    // Delete entries that were removed locally. Scope the delete to the caller
+    // (by userId) so a client cannot delete another user's entries by passing
+    // their entry ids in deletedEntryIds.
+    if (deletedEntryIds.length > 0) {
+      for (const entryId of deletedEntryIds) {
+        const result = await LedgerEntry.findOneAndDelete({
+          id: entryId,
+          userId: this.userId,
+        });
+        if (result) deleted++;
+      }
+    }
+
     // Sync entries: create or update
     for (const incoming of entries) {
       if (!incoming.id) continue;
 
+      // Ownership guard: a user must not attach or modify an entry on a ledger
+      // they do not own. Skip any incoming entry whose ledgerId is not one of
+      // the caller's ledger clientIds.
+      if (!ownedClientIds.has(incoming.ledgerId)) continue;
+
+      // Scope the lookup to the caller. If an entry with this id exists but
+      // belongs to another user, this returns null and the create branch runs;
+      // because `id` is globally unique, LedgerEntry.create will then throw on
+      // the duplicate key rather than silently overwriting the other user's
+      // row — a colliding id from another user is never overwritten here.
       const existing = await LedgerEntry.findOne({
         id: incoming.id,
+        userId: this.userId,
       });
 
       if (existing) {
@@ -280,11 +312,13 @@ class LedgerService {
         const dup = await LedgerEntry.findOne({
           ledgerId: incoming.ledgerId,
           transactionId: incoming.transactionId,
+          userId: this.userId,
         });
         if (dup) continue;
 
         await LedgerEntry.create({
           id: incoming.id,
+          userId: this.userId,
           ledgerId: incoming.ledgerId,
           transactionId: incoming.transactionId,
           direction: incoming.direction,
@@ -300,7 +334,20 @@ class LedgerService {
     // Return canonical state
     const allLedgers = await Ledger.find({ userId: this.userId }).sort({ updatedAt: -1 }).lean();
 
-    const allEntries = await LedgerEntry.find({}).lean();
+    // Scope entries to THIS user's ledgers, by both the user's ledger clientIds
+    // (the canonical key entries are stored under) and userId (defense-in-depth
+    // now that LedgerEntry carries userId). An unscoped `find({})` here returned
+    // every entry for every user — an unbounded read that grows with the whole
+    // collection (a real timeout risk as data accumulates) and also leaked
+    // other users' entries into this user's sync response.
+    const ledgerClientIds = allLedgers.map((l) => (l as { clientId: string }).clientId);
+    const allEntries =
+      ledgerClientIds.length > 0
+        ? await LedgerEntry.find({
+            ledgerId: { $in: ledgerClientIds },
+            userId: this.userId,
+          }).lean()
+        : [];
 
     return {
       synced: created + updated + deleted,
@@ -324,7 +371,9 @@ class LedgerService {
       userId: this.userId,
     });
     if (!ledger) return [];
-    return LedgerEntry.find({ ledgerId: ledger.clientId }).sort({ createdAt: -1 });
+    return LedgerEntry.find({ ledgerId: ledger.clientId, userId: this.userId }).sort({
+      createdAt: -1,
+    });
   }
 }
 
