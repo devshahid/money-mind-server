@@ -17,6 +17,24 @@ describe('LedgerService (Unit Tests)', () => {
     service = new LedgerService(mockUserId);
   });
 
+  // The mongoose model auto-mock shares a single `find` mock between Ledger and
+  // LedgerEntry (both are Models with the same prototype methods). syncLedgers
+  // ends with two chained reads off that shared mock:
+  //   Ledger.find({...}).sort({updatedAt:-1}).lean()  -> ledgers
+  //   LedgerEntry.find({}).lean()                      -> entries
+  // A single return object must therefore satisfy BOTH shapes: `.sort()` yields
+  // the ledgers-bearing chain, while a bare `.lean()` yields the entries.
+  const mockFinalReads = (ledgers: any[] = [], entries: any[] = []): void => {
+    const chain = {
+      sort: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue(ledgers),
+      }),
+      lean: jest.fn().mockResolvedValue(entries),
+    };
+    (Ledger.find as any).mockReturnValue(chain);
+    (LedgerEntry.find as any).mockReturnValue(chain);
+  };
+
   describe('create()', () => {
     it('should create a new ledger with valid partyName and clientId', async () => {
       const mockLedger = {
@@ -29,7 +47,7 @@ describe('LedgerService (Unit Tests)', () => {
         save: jest.fn().mockResolvedValue(true),
       };
 
-      (Ledger as any).mockImplementation(() => mockLedger);
+      (Ledger.create as any).mockResolvedValue(mockLedger);
 
       const result = await service.create('John Doe', 'client-123');
 
@@ -42,19 +60,24 @@ describe('LedgerService (Unit Tests)', () => {
       const mockLedger = {
         _id: mockLedgerId,
         userId: mockUserId,
-        clientId: expect.any(String),
+        clientId: 'client-generated',
         partyName: 'Jane Doe',
-        createdAt: expect.any(String),
-        updatedAt: expect.any(String),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         save: jest.fn().mockResolvedValue(true),
       };
 
-      (Ledger as any).mockImplementation(() => mockLedger);
+      (Ledger.create as any).mockResolvedValue(mockLedger);
 
       const result = await service.create('Jane Doe');
 
       expect(result).toBeDefined();
       expect(result.partyName).toBe('Jane Doe');
+      expect(Ledger.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientId: expect.any(String),
+        })
+      );
     });
   });
 
@@ -79,7 +102,7 @@ describe('LedgerService (Unit Tests)', () => {
         },
       ];
 
-      const mockLedger = {
+      const ledgerDoc = {
         _id: mockLedgerId,
         userId: mockUserId,
         clientId: 'client-123',
@@ -87,9 +110,17 @@ describe('LedgerService (Unit Tests)', () => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
+      // The service spreads `ledger.toObject()` into its result, mirroring a
+      // real mongoose document, so the mock must expose that method.
+      const mockLedger = {
+        ...ledgerDoc,
+        toObject: jest.fn().mockReturnValue(ledgerDoc),
+      };
 
       (Ledger.findOne as any).mockResolvedValue(mockLedger);
-      (LedgerEntry.find as any).mockResolvedValue(mockEntries);
+      (LedgerEntry.find as any).mockReturnValue({
+        sort: jest.fn().mockResolvedValue(mockEntries),
+      });
 
       const result = await service.getWithEntries(mockLedgerId);
 
@@ -279,22 +310,17 @@ describe('LedgerService (Unit Tests)', () => {
         partyName: 'John Doe',
         createdAt: pastTime,
         updatedAt: pastTime, // Older
+        save: jest.fn().mockResolvedValue(true),
       };
 
       (Ledger.findOne as any).mockResolvedValueOnce(existingLedger);
-      (Ledger.updateOne as any).mockResolvedValueOnce({ modifiedCount: 1 });
-      (Ledger.find as any).mockResolvedValueOnce([incomingLedger]);
-      (LedgerEntry.find as any).mockResolvedValueOnce([]);
+      mockFinalReads([]);
 
       await service.syncLedgers([incomingLedger], [], [], []);
 
-      expect(Ledger.updateOne).toHaveBeenCalledWith(
-        expect.any(Object),
-        expect.objectContaining({
-          partyName: 'John Doe (Updated)',
-          updatedAt: now,
-        })
-      );
+      expect(existingLedger.save).toHaveBeenCalled();
+      expect(existingLedger.partyName).toBe('John Doe (Updated)');
+      expect(existingLedger.updatedAt).toBe(now);
     });
 
     it('should not update ledger if incoming is older (last-write-wins)', async () => {
@@ -315,40 +341,38 @@ describe('LedgerService (Unit Tests)', () => {
         partyName: 'John Doe',
         createdAt: now,
         updatedAt: recentTime, // More recent existing
+        save: jest.fn().mockResolvedValue(true),
       };
 
       (Ledger.findOne as any).mockResolvedValueOnce(existingLedger);
-      (Ledger.find as any).mockResolvedValueOnce([existingLedger]);
-      (LedgerEntry.find as any).mockResolvedValueOnce([]);
+      mockFinalReads([existingLedger]);
 
       await service.syncLedgers([incomingLedger], [], [], []);
 
-      // Should not call updateOne since incoming is older
-      expect(Ledger.updateOne).not.toHaveBeenCalled();
+      // Should not persist since incoming is older
+      expect(existingLedger.save).not.toHaveBeenCalled();
     });
 
     it('should delete ledgers marked for deletion', async () => {
-      (Ledger.deleteMany as any).mockResolvedValue({ deletedCount: 1 });
-      (Ledger.find as any).mockResolvedValue([]);
-      (LedgerEntry.find as any).mockResolvedValue([]);
+      (Ledger.findOneAndDelete as any).mockResolvedValue({ _id: 'x', clientId: 'ledger-1' });
+      mockFinalReads([]);
 
       await service.syncLedgers([], [], ['ledger-1'], []);
 
-      expect(Ledger.deleteMany).toHaveBeenCalledWith({
-        clientId: { $in: ['ledger-1'] },
+      expect(Ledger.findOneAndDelete).toHaveBeenCalledWith({
+        userId: expect.anything(),
+        clientId: 'ledger-1',
       });
     });
 
     it('should delete entries marked for deletion', async () => {
-      (LedgerEntry.deleteMany as any).mockResolvedValue({ deletedCount: 2 });
-      (Ledger.find as any).mockResolvedValue([]);
-      (LedgerEntry.find as any).mockResolvedValue([]);
+      (LedgerEntry.findOneAndDelete as any).mockResolvedValue({ id: 'entry-1' });
+      mockFinalReads([]);
 
       await service.syncLedgers([], [], [], ['entry-1', 'entry-2']);
 
-      expect(LedgerEntry.deleteMany).toHaveBeenCalledWith({
-        id: { $in: ['entry-1', 'entry-2'] },
-      });
+      expect(LedgerEntry.findOneAndDelete).toHaveBeenCalledWith({ id: 'entry-1' });
+      expect(LedgerEntry.findOneAndDelete).toHaveBeenCalledWith({ id: 'entry-2' });
     });
 
     it('should handle mixed create, update, and delete operations', async () => {
@@ -364,10 +388,9 @@ describe('LedgerService (Unit Tests)', () => {
 
       (Ledger.findOne as any).mockResolvedValueOnce(null); // New ledger doesn't exist
       (Ledger.create as any).mockResolvedValueOnce(newLedger);
-      (Ledger.deleteMany as any).mockResolvedValue({ deletedCount: 1 });
-      (LedgerEntry.deleteMany as any).mockResolvedValue({ deletedCount: 1 });
-      (Ledger.find as any).mockResolvedValueOnce([newLedger]);
-      (LedgerEntry.find as any).mockResolvedValueOnce([]);
+      (Ledger.findOneAndDelete as any).mockResolvedValue({ clientId: 'ledger-deleted' });
+      (LedgerEntry.findOneAndDelete as any).mockResolvedValue({ id: 'entry-deleted' });
+      mockFinalReads([newLedger]);
 
       const result = await service.syncLedgers(
         [newLedger],
@@ -413,6 +436,11 @@ describe('LedgerService (Unit Tests)', () => {
         },
       ];
 
+      (Ledger.findOne as any).mockResolvedValue({
+        _id: mockLedgerId,
+        userId: mockUserId,
+        clientId: 'client-123',
+      });
       (LedgerEntry.find as any).mockReturnValue({
         sort: jest.fn().mockResolvedValue(mockEntries),
       });
