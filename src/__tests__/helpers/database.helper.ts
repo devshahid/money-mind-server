@@ -4,21 +4,49 @@
  */
 
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 
-let mongoServer: MongoMemoryServer | null = null;
+let mongoServer: MongoMemoryReplSet | null = null;
 
 /**
- * Connect to in-memory MongoDB instance
+ * Refuse to run any test-database operation in production.
+ *
+ * These helpers spin up a throwaway in-memory MongoDB and truncate/drop
+ * collections. They must never execute against a real deployment. This guard
+ * makes that structurally impossible: if `NODE_ENV` is 'production' the helper
+ * throws before it can connect or delete anything, regardless of how it was
+ * invoked or what DB_URL happens to be set in the environment.
+ */
+const assertNotProduction = (operation: string): void => {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      `Refusing to run test database helper "${operation}" with NODE_ENV=production. ` +
+        'These helpers truncate/drop collections and must only run against the in-memory test database.'
+    );
+  }
+};
+
+/**
+ * Connect to an in-memory MongoDB instance.
+ *
+ * Uses a single-node REPLICA SET (not a standalone server). Every request in
+ * the app is wrapped by `asyncHandler`, which opens a multi-document
+ * transaction (startSession/startTransaction/commitTransaction). MongoDB only
+ * supports transactions on a replica set or mongos — a standalone `mongod`
+ * rejects them. Running integration tests against a standalone memory server
+ * therefore never exercised the transactional path, which is how a
+ * transaction-dependent production bug shipped green. A single-node replica set
+ * is transaction-capable, runs fully in-process, and costs nothing.
  */
 export const connectTestDatabase = async (): Promise<void> => {
+  assertNotProduction('connectTestDatabase');
   try {
-    mongoServer = await MongoMemoryServer.create();
+    mongoServer = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     const mongoUri = mongoServer.getUri();
 
     await mongoose.connect(mongoUri);
 
-    console.log('✅ Connected to MongoDB Memory Server');
+    console.log('✅ Connected to MongoDB Memory Server (replica set)');
   } catch (error) {
     console.error('❌ Failed to connect to MongoDB Memory Server:', error);
     throw error;
@@ -50,6 +78,7 @@ export const disconnectTestDatabase = async (): Promise<void> => {
  * Clear all collections in the test database
  */
 export const clearDatabase = async (): Promise<void> => {
+  assertNotProduction('clearDatabase');
   try {
     const collections = mongoose.connection.collections;
 
@@ -69,6 +98,7 @@ export const clearDatabase = async (): Promise<void> => {
  * Drop all collections in the test database
  */
 export const dropDatabase = async (): Promise<void> => {
+  assertNotProduction('dropDatabase');
   try {
     const collections = mongoose.connection.collections;
 

@@ -11,6 +11,10 @@ import { Schema, model, Document } from 'mongoose';
  */
 export interface ILedgerEntry extends Document {
   id: string;
+  // Owner of the entry. Defense-in-depth backstop so entry queries can filter
+  // directly by user instead of relying solely on re-deriving ownership through
+  // the parent ledger's clientId (see the sync-path IDOR that motivated this).
+  userId: string;
   ledgerId: string;
   transactionId: string;
   direction: 'i_paid' | 'they_paid';
@@ -23,6 +27,12 @@ export interface ILedgerEntry extends Document {
 
 const ledgerEntrySchema = new Schema<ILedgerEntry>({
   id: { type: String, required: true, unique: true, index: true },
+  // MIGRATION DEPENDENCY: existing rows created before this field was added do
+  // not carry a userId. The backfill migration
+  // `scripts/migrate-backfill-ledger-entry-userid.ts` MUST run BEFORE deploying
+  // this `required: true` schema (it resolves each entry's userId from its
+  // parent ledger), otherwise legacy rows fail validation on save.
+  userId: { type: String, required: true, index: true },
   ledgerId: { type: String, required: true, index: true },
   transactionId: { type: String, required: true },
   direction: { type: String, enum: ['i_paid', 'they_paid'], required: true },

@@ -3,6 +3,7 @@ import { Debt, IDebtDetails } from './models/debts.model';
 import { DebtPayment } from './models/debt-payment.model';
 import { RepaymentSchedule, IRepaymentScheduleItem } from './models/repayment-schedule.model';
 import { DebtTransactionLink } from './models/debt-transaction-link.model';
+import { TransactionLogs } from '../transactions/models/transaction-logs.model';
 import { common } from '../../utils/common';
 import { Types, Document } from 'mongoose';
 import aiService from '../ai/ai.service';
@@ -718,6 +719,15 @@ class DebtService {
     const debt = await Debt.findOne({ _id: common.convertToObjectId(debtId), userId });
     if (!debt) throw new CustomError('Debt not found');
 
+    // Ownership check: the transaction being linked must belong to the caller.
+    // Without this, a user could attach another user's transaction id to their
+    // own debt (which then surfaces via getLinkedTransactions' populate).
+    const tx = await TransactionLogs.findOne({
+      _id: common.convertToObjectId(transactionId),
+      userId,
+    });
+    if (!tx) throw new CustomError('Transaction not found');
+
     // Check if transaction is already linked to another debt
     const existingLink = await DebtTransactionLink.findOne({
       transactionId: common.convertToObjectId(transactionId),
@@ -827,6 +837,24 @@ class DebtService {
 
     const itemIndex = schedule.scheduleItems.findIndex((item) => item.month === month);
     if (itemIndex === -1) throw new CustomError('Schedule item not found');
+
+    // Ownership checks for cross-entity references written from the request
+    // body: a caller must not store a transaction/payment id that belongs to
+    // another user on their own schedule item.
+    if (updates.linkedTransactionId) {
+      const tx = await TransactionLogs.findOne({
+        _id: common.convertToObjectId(updates.linkedTransactionId),
+        userId,
+      });
+      if (!tx) throw new CustomError('Transaction not found');
+    }
+    if (updates.actualPaymentId) {
+      const payment = await DebtPayment.findOne({
+        _id: common.convertToObjectId(updates.actualPaymentId),
+        userId,
+      });
+      if (!payment) throw new CustomError('Payment not found');
+    }
 
     // Update the item
     if (updates.status) schedule.scheduleItems[itemIndex].status = updates.status;
