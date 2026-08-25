@@ -24,10 +24,22 @@ describe('LedgerService (Unit Tests)', () => {
   //   LedgerEntry.find({}).lean()                      -> entries
   // A single return object must therefore satisfy BOTH shapes: `.sort()` yields
   // the ledgers-bearing chain, while a bare `.lean()` yields the entries.
-  const mockFinalReads = (ledgers: any[] = [], entries: any[] = []): void => {
+  //
+  // syncLedgers now performs an ADDITIONAL read to resolve the caller's owned
+  // ledger clientIds (the fix that closes the cross-user entry IDOR):
+  //   Ledger.find({userId}).select('clientId').lean() -> [{clientId}, ...]
+  // So the shared chain must also satisfy `.select().lean()`, yielding the set
+  // of owned ledgers. `ownedLedgers` defaults to `ledgers` (any ledger the user
+  // owns), but callers can pass an explicit list of {clientId} objects when the
+  // owned set differs from the canonical-state ledgers.
+  const mockFinalReads = (ledgers: any[] = [], entries: any[] = [], ownedLedgers?: any[]): void => {
+    const owned = ownedLedgers ?? ledgers;
     const chain = {
       sort: jest.fn().mockReturnValue({
         lean: jest.fn().mockResolvedValue(ledgers),
+      }),
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue(owned),
       }),
       lean: jest.fn().mockResolvedValue(entries),
     };
@@ -365,14 +377,22 @@ describe('LedgerService (Unit Tests)', () => {
       });
     });
 
-    it('should delete entries marked for deletion', async () => {
+    it('should delete entries marked for deletion, scoped to the caller', async () => {
       (LedgerEntry.findOneAndDelete as any).mockResolvedValue({ id: 'entry-1' });
       mockFinalReads([]);
 
       await service.syncLedgers([], [], [], ['entry-1', 'entry-2']);
 
-      expect(LedgerEntry.findOneAndDelete).toHaveBeenCalledWith({ id: 'entry-1' });
-      expect(LedgerEntry.findOneAndDelete).toHaveBeenCalledWith({ id: 'entry-2' });
+      // Deletes MUST be scoped by userId so a caller cannot delete another
+      // user's entry by passing its id in deletedEntryIds.
+      expect(LedgerEntry.findOneAndDelete).toHaveBeenCalledWith({
+        id: 'entry-1',
+        userId: mockUserId,
+      });
+      expect(LedgerEntry.findOneAndDelete).toHaveBeenCalledWith({
+        id: 'entry-2',
+        userId: mockUserId,
+      });
     });
 
     it('should handle mixed create, update, and delete operations', async () => {
@@ -402,6 +422,63 @@ describe('LedgerService (Unit Tests)', () => {
       expect(result).toHaveProperty('synced');
       expect(result).toHaveProperty('created');
       expect(result).toHaveProperty('deleted');
+    });
+
+    it('does NOT create/modify an entry whose ledgerId is not owned by the caller', async () => {
+      const now = new Date().toISOString();
+
+      // Incoming entry references a ledger the caller does NOT own.
+      const foreignEntry = {
+        id: 'foreign-entry',
+        ledgerId: 'not-my-ledger',
+        transactionId: 'tx-x',
+        direction: 'i_paid' as const,
+        amount: 100,
+        createdAt: now,
+      };
+
+      // Caller owns only 'client-mine' (the owned-clientId resolution result).
+      mockFinalReads([], [], [{ clientId: 'client-mine' }]);
+
+      const result = await service.syncLedgers([], [foreignEntry as any], [], []);
+
+      // The ownership guard must short-circuit BEFORE any entry lookup, upsert,
+      // or create — the caller must not touch a ledger they don't own.
+      expect(LedgerEntry.findOne).not.toHaveBeenCalled();
+      expect(LedgerEntry.create).not.toHaveBeenCalled();
+      expect(result.created).toBe(0);
+      expect(result.updated).toBe(0);
+    });
+
+    it('creates an entry whose ledgerId IS owned by the caller', async () => {
+      const now = new Date().toISOString();
+
+      const ownedEntry = {
+        id: 'my-entry',
+        ledgerId: 'client-mine',
+        transactionId: 'tx-1',
+        direction: 'i_paid' as const,
+        amount: 250,
+        createdAt: now,
+      };
+
+      // Owned set includes this entry's ledgerId.
+      mockFinalReads([], [], [{ clientId: 'client-mine' }]);
+      // No existing entry (update lookup) and no duplicate (dup lookup).
+      (LedgerEntry.findOne as any).mockResolvedValue(null);
+      (LedgerEntry.create as any).mockResolvedValue(ownedEntry);
+
+      const result = await service.syncLedgers([], [ownedEntry as any], [], []);
+
+      // The created entry MUST be stamped with the caller's userId.
+      expect(LedgerEntry.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'my-entry',
+          ledgerId: 'client-mine',
+          userId: mockUserId,
+        })
+      );
+      expect(result.created).toBe(1);
     });
   });
 

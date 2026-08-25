@@ -26,6 +26,12 @@ jobs:
           node-version: 22
           cache: 'npm'
 
+      - name: Cache MongoDB binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}
+
       - name: Install dependencies
         run: npm ci
 

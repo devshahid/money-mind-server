@@ -17,8 +17,12 @@ process.env.GITHUB_MODEL = process.env.GITHUB_MODEL || 'gpt-4o-mini';
 process.env.DB_URL = process.env.DB_URL || 'mongodb://localhost:27017';
 process.env.DB_NAME = process.env.DB_NAME || 'test';
 
-// Increase timeout for slower systems
-jest.setTimeout(15000);
+// Increase timeout for slower systems.
+// Integration tests spin up an in-memory MongoDB replica set in a beforeAll
+// hook; on a cold cache (e.g. a fresh CI runner) the mongod binary is
+// downloaded first, which can take well over the old 15s. Give hooks enough
+// headroom so a first-run download does not flake the suite.
+jest.setTimeout(60000);
 
 // Mock console methods to reduce test output noise (optional)
 // Uncomment if you want cleaner test output
