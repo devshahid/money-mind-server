@@ -11,4 +11,5 @@ export const statusCode = {
   BADREQUEST: 400,
   SUCCESS: 200,
   NOT_FOUND: 404,
+  CONFLICT: 409,
 };

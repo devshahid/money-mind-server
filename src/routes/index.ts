@@ -6,6 +6,7 @@ import {
   incomeRoute,
   transactionLogsRoute,
   transactionGroupsRoute,
+  ledgerRoute,
   membersRoute,
   goalsRoute,
   budgetsRoute,
@@ -26,6 +27,8 @@ router.use('/income', incomeRoute);
 router.use('/transaction-logs', transactionLogsRoute);
 
 router.use('/transaction-groups', transactionGroupsRoute);
+
+router.use('/ledgers', ledgerRoute);
 
 router.use('/members', membersRoute);
 
