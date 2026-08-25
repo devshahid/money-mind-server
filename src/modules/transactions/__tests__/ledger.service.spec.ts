@@ -67,7 +67,6 @@ describe('LedgerService (Unit Tests)', () => {
           transactionId: 'tx-1',
           direction: 'i_paid',
           amount: 100,
-          isSettlement: false,
           createdAt: new Date().toISOString(),
         },
         {
@@ -76,7 +75,6 @@ describe('LedgerService (Unit Tests)', () => {
           transactionId: 'tx-2',
           direction: 'they_paid',
           amount: 50,
-          isSettlement: false,
           createdAt: new Date().toISOString(),
         },
       ];
@@ -144,11 +142,15 @@ describe('LedgerService (Unit Tests)', () => {
         transactionId: 'tx-1',
         direction: 'i_paid',
         amount: 100,
-        isSettlement: false,
         createdAt: expect.any(String),
       };
 
-      (Ledger.findOne as any).mockResolvedValue(mockLedger);
+      // NOTE: The mongoose model auto-mock shares a single findOne mock between
+      // Ledger and LedgerEntry, so a single implementation must discriminate by
+      // query shape: the entry duplicate query carries a `transactionId`.
+      (Ledger.findOne as any).mockImplementation((q: any) =>
+        Promise.resolve('transactionId' in (q || {}) ? null : mockLedger)
+      );
       (LedgerEntry.create as any).mockResolvedValue(mockEntry);
 
       const result = await service.addEntry(mockLedgerId, 'tx-1', 'i_paid', 100);
@@ -156,6 +158,78 @@ describe('LedgerService (Unit Tests)', () => {
       expect(result).toBeDefined();
       expect(result?.direction).toBe('i_paid');
       expect(result?.amount).toBe(100);
+    });
+
+    it('should reject linking the same transaction to the same ledger twice', async () => {
+      const mockLedger = {
+        _id: mockLedgerId,
+        userId: mockUserId,
+        clientId: 'client-123',
+        partyName: 'John Doe',
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      const existingEntry = {
+        id: 'entry-existing',
+        ledgerId: mockLedgerId.toString(),
+        transactionId: 'tx-1',
+        direction: 'i_paid',
+        amount: 100,
+      };
+
+      // Shared findOne mock: ledger lookup (no transactionId) returns the
+      // ledger; the entry duplicate query (has transactionId) returns a
+      // pre-existing entry.
+      (Ledger.findOne as any).mockImplementation((q: any) =>
+        Promise.resolve('transactionId' in (q || {}) ? existingEntry : mockLedger)
+      );
+
+      await expect(service.addEntry(mockLedgerId, 'tx-1', 'i_paid', 100)).rejects.toThrow(
+        'This transaction is already linked to this ledger.'
+      );
+
+      // No new entry should be created
+      expect(LedgerEntry.create).not.toHaveBeenCalled();
+      // The duplicate check is scoped to (ledgerId, transactionId), where
+      // ledgerId is the ledger's canonical clientId (not the Mongo _id).
+      expect(LedgerEntry.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ledgerId: mockLedger.clientId,
+          transactionId: 'tx-1',
+        })
+      );
+    });
+
+    it('should allow linking the same transaction to a DIFFERENT ledger', async () => {
+      const otherLedgerId = new Types.ObjectId();
+      const mockLedger = {
+        _id: otherLedgerId,
+        userId: mockUserId,
+        clientId: 'client-456',
+        partyName: 'Jane Doe',
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      const mockEntry = {
+        id: 'entry-2',
+        ledgerId: otherLedgerId.toString(),
+        transactionId: 'tx-1',
+        direction: 'i_paid',
+        amount: 100,
+      };
+
+      // Ledger lookup returns the (different) ledger; the entry duplicate query
+      // returns null because this transaction isn't linked to THIS ledger.
+      (Ledger.findOne as any).mockImplementation((q: any) =>
+        Promise.resolve('transactionId' in (q || {}) ? null : mockLedger)
+      );
+      (LedgerEntry.create as any).mockResolvedValue(mockEntry);
+
+      const result = await service.addEntry(otherLedgerId, 'tx-1', 'i_paid', 100);
+
+      expect(result).toBeDefined();
+      expect(result?.ledgerId).toBe(otherLedgerId.toString());
+      expect(LedgerEntry.create).toHaveBeenCalled();
     });
   });
 

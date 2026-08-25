@@ -133,7 +133,6 @@ describe('LedgerController (Integration Tests)', () => {
         transactionId: 'tx-1',
         direction: 'i_paid',
         amount: 100,
-        isSettlement: false,
         createdAt: new Date().toISOString(),
       };
 

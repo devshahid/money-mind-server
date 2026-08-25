@@ -15,8 +15,10 @@ export interface ILedgerEntry extends Document {
   transactionId: string;
   direction: 'i_paid' | 'they_paid';
   amount: number;
-  isSettlement: boolean;
   createdAt: string;
+  // Snapshot of the linked transaction captured at link time.
+  narration?: string;
+  transactionDate?: string;
 }
 
 const ledgerEntrySchema = new Schema<ILedgerEntry>({
@@ -25,9 +27,20 @@ const ledgerEntrySchema = new Schema<ILedgerEntry>({
   transactionId: { type: String, required: true },
   direction: { type: String, enum: ['i_paid', 'they_paid'], required: true },
   amount: { type: Number, required: true, default: 0 },
-  isSettlement: { type: Boolean, default: false },
   createdAt: { type: String, required: true },
+  narration: { type: String },
+  transactionDate: { type: String },
 });
+
+// Hard backstop for duplicate-prevention: a given transaction may be linked to
+// a ledger only ONCE. Uniqueness is scoped to (ledgerId, transactionId), so the
+// same transaction can still be linked to different ledgers.
+// NOTE: Existing data may contain legacy settlement rows and/or duplicate
+// (ledgerId, transactionId) pairs. Those MUST be cleaned up before this unique
+// index can build — run the one-time migration script
+// `scripts/migrate-remove-ledger-settlement.ts` (see that file) prior to
+// deploying this change.
+ledgerEntrySchema.index({ ledgerId: 1, transactionId: 1 }, { unique: true });
 
 /**
  * Ledger - Tracks financial balance between user and one party

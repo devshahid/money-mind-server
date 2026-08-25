@@ -74,7 +74,7 @@ class LedgerController extends ResponseHandler {
    */
   addEntry = asyncHandler(async (req: CustomRequest, res: Response) => {
     const { id } = req.params as { id: string };
-    const { transactionId, direction, amount, entryId } = req.body;
+    const { transactionId, direction, amount, entryId, narration, transactionDate } = req.body;
     if (!req.user?._id) throw new CustomError('Please login first!!');
     const service = new LedgerService(req.user._id);
     const entry = await service.addEntry(
@@ -82,7 +82,9 @@ class LedgerController extends ResponseHandler {
       transactionId,
       direction,
       amount,
-      entryId
+      entryId,
+      narration,
+      transactionDate
     );
     await this.sendResponse(entry, res);
   });

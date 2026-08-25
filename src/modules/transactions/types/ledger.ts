@@ -16,7 +16,6 @@ export interface ILedgerEntry {
   transactionId: string;
   direction: MoneyDirection;
   amount: number;
-  isSettlement: boolean;
   createdAt: string;
 }
 

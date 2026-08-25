@@ -4,9 +4,12 @@
  * Business logic for ledger operations including offline-first sync
  */
 
+import { randomUUID } from 'crypto';
 import { Types } from 'mongoose';
 import { Ledger, LedgerEntry } from './models/ledger.model';
 import type { ILedger, ILedgerEntry } from './models/ledger.model';
+import { CustomError } from '../../shared/core/ApiError';
+import { statusCode } from '../../constant';
 
 interface SyncLedgerInput {
   id: string;
@@ -28,9 +31,12 @@ class LedgerService {
    */
   async create(partyName: string, clientId?: string) {
     const now = new Date().toISOString();
+    // clientId is the single canonical id shared with the offline-first client.
+    // Always guarantee one so entries and merges have a stable key, even when a
+    // ledger is created directly via the server (no client-supplied clientId).
     const ledger = await Ledger.create({
       userId: this.userId,
-      clientId: clientId || undefined,
+      clientId: clientId || randomUUID(),
       partyName,
       createdAt: now,
       updatedAt: now,
@@ -47,6 +53,9 @@ class LedgerService {
 
   /**
    * Get ledger with all its entries
+   *
+   * Entries are keyed by the ledger's clientId (the single canonical id shared
+   * with the offline-first client), not the Mongo _id.
    */
   async getWithEntries(ledgerId: string | Types.ObjectId) {
     const ledger = await Ledger.findOne({
@@ -57,7 +66,7 @@ class LedgerService {
     if (!ledger) return null;
 
     const entries = await LedgerEntry.find({
-      ledgerId: ledger._id.toString(),
+      ledgerId: ledger.clientId,
     }).sort({ createdAt: -1 });
 
     return {
@@ -80,15 +89,19 @@ class LedgerService {
 
   /**
    * Delete a ledger
+   *
+   * Cascades to its entries, which are keyed by the ledger's clientId.
    */
   async delete(ledgerId: string | Types.ObjectId) {
     const objectId = new Types.ObjectId(ledgerId);
-    await Ledger.findOneAndDelete({
+    const ledger = await Ledger.findOneAndDelete({
       _id: objectId,
       userId: this.userId,
     });
-    // Also delete all entries
-    await LedgerEntry.deleteMany({ ledgerId: objectId.toString() });
+    // Also delete all entries (keyed by clientId, the canonical ledger id)
+    if (ledger) {
+      await LedgerEntry.deleteMany({ ledgerId: ledger.clientId });
+    }
   }
 
   /**
@@ -99,7 +112,9 @@ class LedgerService {
     transactionId: string,
     direction: 'i_paid' | 'they_paid',
     amount: number,
-    entryId?: string
+    entryId?: string,
+    narration?: string,
+    transactionDate?: string
   ) {
     const objectId = new Types.ObjectId(ledgerId);
     const ledger = await Ledger.findOne({
@@ -109,15 +124,33 @@ class LedgerService {
 
     if (!ledger) throw new Error('Ledger not found');
 
+    // Entries are keyed by the ledger's clientId — the single canonical id the
+    // offline-first client also uses — so server- and client-created entries
+    // attach to the same ledger.
+    const canonicalLedgerId = ledger.clientId;
+
+    // Duplicate-prevention: a transaction may be linked to a ledger only once.
+    const dup = await LedgerEntry.findOne({
+      ledgerId: canonicalLedgerId,
+      transactionId,
+    });
+    if (dup) {
+      throw new CustomError(
+        'This transaction is already linked to this ledger.',
+        statusCode.CONFLICT
+      );
+    }
+
     const now = new Date().toISOString();
     const entry = await LedgerEntry.create({
       id: entryId || `entry_${Date.now()}_${Math.random()}`,
-      ledgerId: objectId.toString(),
+      ledgerId: canonicalLedgerId,
       transactionId,
       direction,
       amount,
-      isSettlement: false,
       createdAt: now,
+      narration,
+      transactionDate,
     });
 
     // Update ledger's updatedAt
@@ -132,21 +165,22 @@ class LedgerService {
    */
   async removeEntry(ledgerId: string | Types.ObjectId, entryId: string) {
     const objectId = new Types.ObjectId(ledgerId);
+    const ledger = await Ledger.findOne({
+      _id: objectId,
+      userId: this.userId,
+    });
+    if (!ledger) return;
+
+    // Entries are keyed by the ledger's clientId (canonical id)
     const entry = await LedgerEntry.findOneAndDelete({
       id: entryId,
-      ledgerId: objectId.toString(),
+      ledgerId: ledger.clientId,
     });
 
     if (entry) {
       // Update ledger's updatedAt
-      const ledger = await Ledger.findOne({
-        _id: objectId,
-        userId: this.userId,
-      });
-      if (ledger) {
-        ledger.updatedAt = new Date().toISOString();
-        await ledger.save();
-      }
+      ledger.updatedAt = new Date().toISOString();
+      await ledger.save();
     }
   }
 
@@ -233,19 +267,31 @@ class LedgerService {
         if (incomingTime > serverTime) {
           existing.direction = incoming.direction;
           existing.amount = incoming.amount;
-          existing.isSettlement = incoming.isSettlement;
+          if (incoming.narration !== undefined) existing.narration = incoming.narration;
+          if (incoming.transactionDate !== undefined)
+            existing.transactionDate = incoming.transactionDate;
           await existing.save();
           updated++;
         }
       } else {
+        // Defensive duplicate-prevention: skip creating an entry when one
+        // already links this transaction to this ledger, so a buggy client
+        // cannot introduce duplicates via sync.
+        const dup = await LedgerEntry.findOne({
+          ledgerId: incoming.ledgerId,
+          transactionId: incoming.transactionId,
+        });
+        if (dup) continue;
+
         await LedgerEntry.create({
           id: incoming.id,
           ledgerId: incoming.ledgerId,
           transactionId: incoming.transactionId,
           direction: incoming.direction,
           amount: incoming.amount,
-          isSettlement: incoming.isSettlement,
           createdAt: incoming.createdAt,
+          narration: incoming.narration,
+          transactionDate: incoming.transactionDate,
         });
         created++;
       }
@@ -268,10 +314,17 @@ class LedgerService {
 
   /**
    * Get all entries for a ledger
+   *
+   * Entries are keyed by the ledger's clientId (canonical id).
    */
   async getEntries(ledgerId: string | Types.ObjectId) {
     const objectId = new Types.ObjectId(ledgerId);
-    return LedgerEntry.find({ ledgerId: objectId.toString() }).sort({ createdAt: -1 });
+    const ledger = await Ledger.findOne({
+      _id: objectId,
+      userId: this.userId,
+    });
+    if (!ledger) return [];
+    return LedgerEntry.find({ ledgerId: ledger.clientId }).sort({ createdAt: -1 });
   }
 }
 
