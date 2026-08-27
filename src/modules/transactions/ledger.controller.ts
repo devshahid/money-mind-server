@@ -105,15 +105,17 @@ class LedgerController extends ResponseHandler {
    * Receives local state and returns canonical state
    */
   syncLedgers = asyncHandler(async (req: CustomRequest, res: Response) => {
-    const { ledgers, entries, deletedLedgerIds, deletedEntryIds } = req.body;
+    const { operations, ledgers, entries, deletedLedgerIds, deletedEntryIds } = req.body;
     if (!req.user?._id) throw new CustomError('Please login first!!');
     const service = new LedgerService(req.user._id);
-    const response = await service.syncLedgers(
-      ledgers || [],
-      entries || [],
-      deletedLedgerIds || [],
-      deletedEntryIds || []
-    );
+    const response = Array.isArray(operations)
+      ? await service.syncOperations(operations)
+      : await service.syncLedgers(
+          ledgers || [],
+          entries || [],
+          deletedLedgerIds || [],
+          deletedEntryIds || []
+        );
     await this.sendResponse(response, res);
   });
 

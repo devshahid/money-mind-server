@@ -19,6 +19,12 @@ interface SyncLedgerInput {
   updatedAt: string;
 }
 
+type SyncOperation =
+  | { id: string; type: 'upsert_ledger'; ledger: SyncLedgerInput }
+  | { id: string; type: 'delete_ledger'; ledgerId: string }
+  | { id: string; type: 'link_entry'; entry: ILedgerEntry }
+  | { id: string; type: 'unlink_entry'; ledgerId: string; entryId: string };
+
 class LedgerService {
   private userId: Types.ObjectId;
 
@@ -189,6 +195,94 @@ class LedgerService {
       ledger.updatedAt = new Date().toISOString();
       await ledger.save();
     }
+  }
+
+  /**
+   * Apply only client mutations that are still pending. Each mutation is
+   * naturally idempotent: linking checks both the entry id and the
+   * ledger/transaction pair; deletes are no-ops when already applied.
+   */
+  async syncOperations(operations: SyncOperation[]) {
+    const processedOperationIds: string[] = [];
+
+    for (const operation of operations) {
+      if (!operation?.id) continue;
+
+      if (operation.type === 'upsert_ledger') {
+        const incoming = operation.ledger;
+        if (!incoming?.clientId) continue;
+        const existing = await Ledger.findOne({ userId: this.userId, clientId: incoming.clientId });
+        if (existing) {
+          const incomingTime = new Date(incoming.updatedAt || 0).getTime();
+          if (incomingTime > new Date(existing.updatedAt).getTime()) {
+            existing.partyName = incoming.partyName;
+            existing.updatedAt = incoming.updatedAt;
+            await existing.save();
+          }
+        } else {
+          await Ledger.create({
+            userId: this.userId,
+            clientId: incoming.clientId,
+            partyName: incoming.partyName,
+            createdAt: incoming.createdAt,
+            updatedAt: incoming.updatedAt,
+          });
+        }
+        processedOperationIds.push(operation.id);
+        continue;
+      }
+
+      if (operation.type === 'delete_ledger') {
+        const ledger = await Ledger.findOneAndDelete({
+          userId: this.userId,
+          clientId: operation.ledgerId,
+        });
+        if (ledger)
+          await LedgerEntry.deleteMany({ userId: this.userId, ledgerId: ledger.clientId });
+        processedOperationIds.push(operation.id);
+        continue;
+      }
+
+      if (operation.type === 'unlink_entry') {
+        // The parent-ledger check prevents an entry id from being deleted from
+        // another ledger belonging to the same user.
+        const ownedLedger = await Ledger.exists({
+          userId: this.userId,
+          clientId: operation.ledgerId,
+        });
+        if (!ownedLedger) continue;
+        await LedgerEntry.deleteOne({
+          id: operation.entryId,
+          userId: this.userId,
+          ledgerId: operation.ledgerId,
+        });
+        processedOperationIds.push(operation.id);
+        continue;
+      }
+
+      if (operation.type === 'link_entry') {
+        const entry = operation.entry;
+        const ownedLedger = await Ledger.exists({ userId: this.userId, clientId: entry.ledgerId });
+        if (!ownedLedger) continue;
+        const existingById = await LedgerEntry.findOne({ id: entry.id, userId: this.userId });
+        const duplicate = await LedgerEntry.findOne({
+          userId: this.userId,
+          ledgerId: entry.ledgerId,
+          transactionId: entry.transactionId,
+        });
+        if (!existingById && !duplicate) {
+          await LedgerEntry.create({ ...entry, userId: this.userId });
+        }
+        processedOperationIds.push(operation.id);
+      }
+    }
+
+    const ledgers = await Ledger.find({ userId: this.userId }).sort({ updatedAt: -1 }).lean();
+    const ledgerIds = ledgers.map((ledger) => (ledger as { clientId: string }).clientId);
+    const entries = ledgerIds.length
+      ? await LedgerEntry.find({ userId: this.userId, ledgerId: { $in: ledgerIds } }).lean()
+      : [];
+    return { ledgers, entries, processedOperationIds };
   }
 
   /**
