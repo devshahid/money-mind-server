@@ -1,3 +1,20 @@
+## [4.0.0](https://github.com/devshahid/money-mind-server/compare/v3.0.0...v4.0.0) (2026-09-03)
+
+### ⚠ BREAKING CHANGES
+
+- **ledger:** enforce ledger entry user isolation, plus CI/tooling hardening (#19)
+- **ledger:** enforce user ownership on ledger entry sync and add userId backstop (#18)
+
+### Features
+
+- **ledger:** process sync operations ([#22](https://github.com/devshahid/money-mind-server/issues/22)) ([c53546c](https://github.com/devshahid/money-mind-server/commit/c53546c2ee5ee2d8f05352d19bb58a4e1882afdb))
+
+### Bug Fixes
+
+- **ci:** pin conventionalcommits preset to v8 for semantic-release writer compatibility ([e3430e8](https://github.com/devshahid/money-mind-server/commit/e3430e898ed44fbbd74e14b6a18f0f14d457d074))
+- **ledger:** enforce ledger entry user isolation, plus CI/tooling hardening ([#19](https://github.com/devshahid/money-mind-server/issues/19)) ([98f123e](https://github.com/devshahid/money-mind-server/commit/98f123ef459ce4c6063e918053a2bdd480680c9a))
+- **ledger:** enforce user ownership on ledger entry sync and add userId backstop ([#18](https://github.com/devshahid/money-mind-server/issues/18)) ([3a546b2](https://github.com/devshahid/money-mind-server/commit/3a546b2f619330b2253d1d53f2d29590db477ab5))
+
 ## [3.0.0](https://github.com/devshahid/money-mind-server/compare/v2.0.0...v3.0.0) (2026-08-25)
 
 ### ⚠ BREAKING CHANGES
