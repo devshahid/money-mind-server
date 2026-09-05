@@ -13,6 +13,12 @@ import { UserLogin } from '../../users/models/user-logins.model';
 import { AIUserConfig } from '../models/ai-user-config.model';
 import jwtHandler from '../../../shared/core/jwtHandler';
 
+// No real Gemini calls in tests — mock the LangChain Gemini client entirely.
+const mockInvoke = jest.fn();
+jest.mock('@langchain/google-genai', () => ({
+  ChatGoogleGenerativeAI: jest.fn().mockImplementation(() => ({ invoke: mockInvoke })),
+}));
+
 describe('AI Config API Integration Tests', () => {
   let app: Express;
   let authToken: string;
@@ -54,6 +60,7 @@ describe('AI Config API Integration Tests', () => {
 
   beforeEach(async () => {
     await clearDatabase();
+    mockInvoke.mockReset();
     const { userId, token } = await createAuthenticatedUser('test@example.com');
     testUserId = userId;
     authToken = token;
@@ -190,6 +197,102 @@ describe('AI Config API Integration Tests', () => {
 
     it('returns 401 when no auth token provided', async () => {
       await request(app).delete('/api/v1/ai/config').expect(401);
+    });
+  });
+
+  describe('POST /api/v1/ai/config/test', () => {
+    it('returns success when Gemini responds and does not persist anything', async () => {
+      mockInvoke.mockResolvedValue({ content: 'pong' });
+
+      const response = await request(app)
+        .post('/api/v1/ai/config/test')
+        .set('accessToken', authToken)
+        .send({ model: 'gemini-2.5-flash', apiKey: 'test-gemini-api-key' })
+        .expect(200);
+
+      expect(response.body.output).toEqual({ success: true });
+
+      const stored = await AIUserConfig.findOne({ userId: testUserId });
+      expect(stored).toBeNull();
+    });
+
+    it('never returns the API key in the response', async () => {
+      mockInvoke.mockResolvedValue({ content: 'pong' });
+
+      const response = await request(app)
+        .post('/api/v1/ai/config/test')
+        .set('accessToken', authToken)
+        .send({ model: 'gemini-2.5-flash', apiKey: 'test-gemini-api-key' })
+        .expect(200);
+
+      expect(JSON.stringify(response.body)).not.toContain('test-gemini-api-key');
+    });
+
+    it('returns 400 and a sanitized message for an invalid API key', async () => {
+      mockInvoke.mockRejectedValue({ status: 401, message: 'API key not valid' });
+
+      const response = await request(app)
+        .post('/api/v1/ai/config/test')
+        .set('accessToken', authToken)
+        .send({ model: 'gemini-2.5-flash', apiKey: 'bad-key' })
+        .expect(400);
+
+      expect(response.body.message).toMatch(/invalid or unauthorized gemini api key/i);
+      expect(JSON.stringify(response.body)).not.toContain('bad-key');
+    });
+
+    it('returns 400 and a sanitized message for an unsupported model at the provider', async () => {
+      mockInvoke.mockRejectedValue({ status: 404, message: 'models/foo is not found' });
+
+      const response = await request(app)
+        .post('/api/v1/ai/config/test')
+        .set('accessToken', authToken)
+        .send({ model: 'gemini-2.5-flash', apiKey: 'test-gemini-api-key' })
+        .expect(400);
+
+      expect(response.body.message).toMatch(/invalid or unsupported gemini model/i);
+    });
+
+    it('returns a sanitized error (not the raw provider payload) for a provider/network failure', async () => {
+      mockInvoke.mockRejectedValue(new Error('fetch failed: ECONNREFUSED'));
+
+      const response = await request(app)
+        .post('/api/v1/ai/config/test')
+        .set('accessToken', authToken)
+        .send({ model: 'gemini-2.5-flash', apiKey: 'test-gemini-api-key' })
+        .expect(502);
+
+      expect(response.body.message).toMatch(/unable to reach gemini/i);
+      expect(response.body.message).not.toMatch(/econnrefused/i);
+    });
+
+    it('returns 400 for an invalid model without calling Gemini', async () => {
+      await request(app)
+        .post('/api/v1/ai/config/test')
+        .set('accessToken', authToken)
+        .send({ model: 'not-a-real-model', apiKey: 'test-gemini-api-key' })
+        .expect(400);
+
+      expect(mockInvoke).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when apiKey is missing', async () => {
+      await request(app)
+        .post('/api/v1/ai/config/test')
+        .set('accessToken', authToken)
+        .send({ model: 'gemini-2.5-flash' })
+        .expect(400);
+
+      expect(mockInvoke).not.toHaveBeenCalled();
+    });
+
+    it('returns 401 when no auth token provided', async () => {
+      await request(app)
+        .post('/api/v1/ai/config/test')
+        .send({ model: 'gemini-2.5-flash', apiKey: 'test-gemini-api-key' })
+        .expect(401);
+
+      expect(mockInvoke).not.toHaveBeenCalled();
     });
   });
 

@@ -19,4 +19,11 @@ aiConfigRoute.put(
 
 aiConfigRoute.delete('/config', authHandler.userAccess, aiConfigController.deleteConfig);
 
+aiConfigRoute.post(
+  '/config/test',
+  authHandler.userAccess,
+  validateRequest(upsertAIConfigSchema),
+  aiConfigController.testConnection
+);
+
 export { aiConfigRoute };

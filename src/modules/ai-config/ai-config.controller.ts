@@ -30,6 +30,15 @@ class AIConfigController extends ResponseHandler {
     await aiConfigService.deleteConfig(req.user._id);
     await this.sendResponse({ configured: false }, res);
   });
+
+  testConnection = asyncHandler(async (req: CustomRequest, res: Response) => {
+    if (!req.user?._id) throw new CustomError('Please login first!!');
+
+    const { model, apiKey } = req.body;
+    const aiConfigService = new AIConfigService();
+    const response = await aiConfigService.testConnection(model, apiKey);
+    await this.sendResponse(response, res);
+  });
 }
 
 export { AIConfigController };

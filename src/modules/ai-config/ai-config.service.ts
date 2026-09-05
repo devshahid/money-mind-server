@@ -1,7 +1,9 @@
 import { Types } from 'mongoose';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { AIUserConfig, IAIUserConfig } from './models/ai-user-config.model';
 import { GeminiModel } from './constants/gemini-models';
 import { encrypt } from '../../shared/utils/encryption.util';
+import { CustomError } from '../../shared/core/ApiError';
 
 export interface SafeAIConfig {
   configured: boolean;
@@ -21,6 +23,21 @@ function toSafeConfig(doc: IAIUserConfig | null): SafeAIConfig {
     model: doc.model,
     isActive: doc.isActive,
   };
+}
+
+// Maps a raw Gemini/LangChain failure to a safe, generic application error.
+// Never surfaces the raw provider error object/payload to the caller.
+function mapGeminiTestError(error: unknown): CustomError {
+  const status = (error as { status?: number })?.status;
+  const message = ((error as { message?: string })?.message || '').toLowerCase();
+
+  if (status === 401 || status === 403 || message.includes('api key')) {
+    return new CustomError('Invalid or unauthorized Gemini API key', 400);
+  }
+  if (status === 404 || message.includes('model')) {
+    return new CustomError('Invalid or unsupported Gemini model', 400);
+  }
+  return new CustomError('Unable to reach Gemini. Please try again later.', 502);
 }
 
 class AIConfigService {
@@ -55,6 +72,18 @@ class AIConfigService {
 
   async deleteConfig(userId: Types.ObjectId | string): Promise<void> {
     await AIUserConfig.deleteOne({ userId });
+  }
+
+  async testConnection(model: GeminiModel, apiKey: string): Promise<{ success: true }> {
+    const llm = new ChatGoogleGenerativeAI({ apiKey, model, temperature: 0, maxOutputTokens: 1 });
+
+    try {
+      await llm.invoke('ping');
+    } catch (error) {
+      throw mapGeminiTestError(error);
+    }
+
+    return { success: true };
   }
 }
 

@@ -4,6 +4,8 @@ import { Types } from 'mongoose';
 import { AIConfigService } from '../ai-config.service';
 import { AIUserConfig } from '../models/ai-user-config.model';
 import * as encryptionUtil from '../../../shared/utils/encryption.util';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { CustomError } from '../../../shared/core/ApiError';
 
 jest.mock('../models/ai-user-config.model', () => ({
   AIUserConfig: {
@@ -13,6 +15,11 @@ jest.mock('../models/ai-user-config.model', () => ({
   },
 }));
 jest.mock('../../../shared/utils/encryption.util');
+
+const mockInvoke = jest.fn();
+jest.mock('@langchain/google-genai', () => ({
+  ChatGoogleGenerativeAI: jest.fn().mockImplementation(() => ({ invoke: mockInvoke })),
+}));
 
 describe('AIConfigService (Unit Tests)', () => {
   let service: AIConfigService;
@@ -169,6 +176,69 @@ describe('AIConfigService (Unit Tests)', () => {
       await service.deleteConfig(mockUserId);
 
       expect(AIUserConfig.deleteOne).toHaveBeenCalledWith({ userId: mockUserId });
+    });
+  });
+
+  describe('testConnection', () => {
+    it('returns success when Gemini responds', async () => {
+      mockInvoke.mockResolvedValue({ content: 'pong' });
+
+      const result = await service.testConnection('gemini-2.5-flash', 'valid-key');
+
+      expect(result).toEqual({ success: true });
+      expect(ChatGoogleGenerativeAI).toHaveBeenCalledWith(
+        expect.objectContaining({ apiKey: 'valid-key', model: 'gemini-2.5-flash' })
+      );
+      expect(mockInvoke).toHaveBeenCalledWith('ping');
+    });
+
+    it('maps a 401/403 failure to an invalid-credential error', async () => {
+      mockInvoke.mockRejectedValue({ status: 401, message: 'Request had invalid authentication' });
+
+      await expect(service.testConnection('gemini-2.5-flash', 'bad-key')).rejects.toThrow(
+        CustomError
+      );
+      await expect(service.testConnection('gemini-2.5-flash', 'bad-key')).rejects.toThrow(
+        /invalid or unauthorized gemini api key/i
+      );
+    });
+
+    it('maps an "API key not valid" message to an invalid-credential error', async () => {
+      mockInvoke.mockRejectedValue(new Error('API key not valid. Please pass a valid API key.'));
+
+      await expect(service.testConnection('gemini-2.5-flash', 'bad-key')).rejects.toThrow(
+        /invalid or unauthorized gemini api key/i
+      );
+    });
+
+    it('maps a 404/model-not-found failure to an invalid-model error', async () => {
+      mockInvoke.mockRejectedValue({ status: 404, message: 'models/foo is not found' });
+
+      await expect(service.testConnection('gemini-2.5-flash', 'valid-key')).rejects.toThrow(
+        /invalid or unsupported gemini model/i
+      );
+    });
+
+    it('maps an unrecognized/network failure to a generic provider error', async () => {
+      mockInvoke.mockRejectedValue(new Error('fetch failed'));
+
+      await expect(service.testConnection('gemini-2.5-flash', 'valid-key')).rejects.toThrow(
+        /unable to reach gemini/i
+      );
+    });
+
+    it('never leaks the raw provider error or the API key in the thrown error', async () => {
+      mockInvoke.mockRejectedValue({
+        status: 401,
+        message: 'invalid API key: super-secret-plaintext-key',
+      });
+
+      try {
+        await service.testConnection('gemini-2.5-flash', 'super-secret-plaintext-key');
+        throw new Error('expected testConnection to throw');
+      } catch (error) {
+        expect((error as Error).message).not.toContain('super-secret-plaintext-key');
+      }
     });
   });
 });
