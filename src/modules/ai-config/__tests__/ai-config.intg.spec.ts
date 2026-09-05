@@ -13,10 +13,11 @@ import { UserLogin } from '../../users/models/user-logins.model';
 import { AIUserConfig } from '../models/ai-user-config.model';
 import jwtHandler from '../../../shared/core/jwtHandler';
 
-// No real Gemini calls in tests — mock the LangChain Gemini client entirely.
+// No real Gemini calls in tests — mock the LangChain client entirely (Gemini is
+// reached via ChatOpenAI against Gemini's OpenAI-compatible endpoint).
 const mockInvoke = jest.fn();
-jest.mock('@langchain/google-genai', () => ({
-  ChatGoogleGenerativeAI: jest.fn().mockImplementation(() => ({ invoke: mockInvoke })),
+jest.mock('@langchain/openai', () => ({
+  ChatOpenAI: jest.fn().mockImplementation(() => ({ invoke: mockInvoke })),
 }));
 
 describe('AI Config API Integration Tests', () => {
@@ -80,7 +81,7 @@ describe('AI Config API Integration Tests', () => {
       await request(app)
         .put('/api/v1/ai/config')
         .set('accessToken', authToken)
-        .send({ model: 'gemini-2.5-flash', apiKey: 'test-gemini-api-key' })
+        .send({ model: 'gemini-3.6-flash', apiKey: 'test-gemini-api-key' })
         .expect(200);
 
       const response = await request(app)
@@ -91,7 +92,7 @@ describe('AI Config API Integration Tests', () => {
       expect(response.body.output).toEqual({
         configured: true,
         provider: 'gemini',
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.6-flash',
         isActive: true,
       });
     });
@@ -106,13 +107,13 @@ describe('AI Config API Integration Tests', () => {
       const response = await request(app)
         .put('/api/v1/ai/config')
         .set('accessToken', authToken)
-        .send({ model: 'gemini-2.5-flash', apiKey: 'test-gemini-api-key' })
+        .send({ model: 'gemini-3.6-flash', apiKey: 'test-gemini-api-key' })
         .expect(200);
 
       expect(response.body.output).toEqual({
         configured: true,
         provider: 'gemini',
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.6-flash',
         isActive: true,
       });
       const responseText = JSON.stringify(response.body);
@@ -126,7 +127,7 @@ describe('AI Config API Integration Tests', () => {
       await request(app)
         .put('/api/v1/ai/config')
         .set('accessToken', authToken)
-        .send({ model: 'gemini-2.5-flash', apiKey: 'test-gemini-api-key' })
+        .send({ model: 'gemini-3.6-flash', apiKey: 'test-gemini-api-key' })
         .expect(200);
 
       const stored = await AIUserConfig.findOne({ userId: testUserId }).select(
@@ -142,16 +143,16 @@ describe('AI Config API Integration Tests', () => {
       await request(app)
         .put('/api/v1/ai/config')
         .set('accessToken', authToken)
-        .send({ model: 'gemini-2.5-flash', apiKey: 'first-key' })
+        .send({ model: 'gemini-3.6-flash', apiKey: 'first-key' })
         .expect(200);
 
       const response = await request(app)
         .put('/api/v1/ai/config')
         .set('accessToken', authToken)
-        .send({ model: 'gemini-2.5-pro', apiKey: 'second-key' })
+        .send({ model: 'gemini-3.5-flash-lite', apiKey: 'second-key' })
         .expect(200);
 
-      expect(response.body.output.model).toBe('gemini-2.5-pro');
+      expect(response.body.output.model).toBe('gemini-3.5-flash-lite');
 
       const count = await AIUserConfig.countDocuments({ userId: testUserId });
       expect(count).toBe(1);
@@ -169,14 +170,14 @@ describe('AI Config API Integration Tests', () => {
       await request(app)
         .put('/api/v1/ai/config')
         .set('accessToken', authToken)
-        .send({ model: 'gemini-2.5-flash' })
+        .send({ model: 'gemini-3.6-flash' })
         .expect(400);
     });
 
     it('returns 401 when no auth token provided', async () => {
       await request(app)
         .put('/api/v1/ai/config')
-        .send({ model: 'gemini-2.5-flash', apiKey: 'test-gemini-api-key' })
+        .send({ model: 'gemini-3.6-flash', apiKey: 'test-gemini-api-key' })
         .expect(401);
     });
   });
@@ -186,7 +187,7 @@ describe('AI Config API Integration Tests', () => {
       await request(app)
         .put('/api/v1/ai/config')
         .set('accessToken', authToken)
-        .send({ model: 'gemini-2.5-flash', apiKey: 'test-gemini-api-key' })
+        .send({ model: 'gemini-3.6-flash', apiKey: 'test-gemini-api-key' })
         .expect(200);
 
       await request(app).delete('/api/v1/ai/config').set('accessToken', authToken).expect(200);
@@ -201,20 +202,23 @@ describe('AI Config API Integration Tests', () => {
   });
 
   describe('POST /api/v1/ai/config/test', () => {
-    it('returns success when Gemini responds and does not persist anything', async () => {
-      mockInvoke.mockResolvedValue({ content: 'pong' });
+    it.each(['gemini-3.6-flash', 'gemini-3.5-flash-lite'])(
+      'returns success when Gemini responds for %s and does not persist anything',
+      async (model) => {
+        mockInvoke.mockResolvedValue({ content: 'pong' });
 
-      const response = await request(app)
-        .post('/api/v1/ai/config/test')
-        .set('accessToken', authToken)
-        .send({ model: 'gemini-2.5-flash', apiKey: 'test-gemini-api-key' })
-        .expect(200);
+        const response = await request(app)
+          .post('/api/v1/ai/config/test')
+          .set('accessToken', authToken)
+          .send({ model, apiKey: 'test-gemini-api-key' })
+          .expect(200);
 
-      expect(response.body.output).toEqual({ success: true });
+        expect(response.body.output).toEqual({ success: true });
 
-      const stored = await AIUserConfig.findOne({ userId: testUserId });
-      expect(stored).toBeNull();
-    });
+        const stored = await AIUserConfig.findOne({ userId: testUserId });
+        expect(stored).toBeNull();
+      }
+    );
 
     it('never returns the API key in the response', async () => {
       mockInvoke.mockResolvedValue({ content: 'pong' });
@@ -222,7 +226,7 @@ describe('AI Config API Integration Tests', () => {
       const response = await request(app)
         .post('/api/v1/ai/config/test')
         .set('accessToken', authToken)
-        .send({ model: 'gemini-2.5-flash', apiKey: 'test-gemini-api-key' })
+        .send({ model: 'gemini-3.6-flash', apiKey: 'test-gemini-api-key' })
         .expect(200);
 
       expect(JSON.stringify(response.body)).not.toContain('test-gemini-api-key');
@@ -234,7 +238,7 @@ describe('AI Config API Integration Tests', () => {
       const response = await request(app)
         .post('/api/v1/ai/config/test')
         .set('accessToken', authToken)
-        .send({ model: 'gemini-2.5-flash', apiKey: 'bad-key' })
+        .send({ model: 'gemini-3.6-flash', apiKey: 'bad-key' })
         .expect(400);
 
       expect(response.body.message).toMatch(/invalid or unauthorized gemini api key/i);
@@ -242,12 +246,12 @@ describe('AI Config API Integration Tests', () => {
     });
 
     it('returns 400 and a sanitized message for an unsupported model at the provider', async () => {
-      mockInvoke.mockRejectedValue({ status: 404, message: 'models/foo is not found' });
+      mockInvoke.mockRejectedValue({ status: 404, message: 'The model `foo` does not exist' });
 
       const response = await request(app)
         .post('/api/v1/ai/config/test')
         .set('accessToken', authToken)
-        .send({ model: 'gemini-2.5-flash', apiKey: 'test-gemini-api-key' })
+        .send({ model: 'gemini-3.6-flash', apiKey: 'test-gemini-api-key' })
         .expect(400);
 
       expect(response.body.message).toMatch(/invalid or unsupported gemini model/i);
@@ -259,7 +263,7 @@ describe('AI Config API Integration Tests', () => {
       const response = await request(app)
         .post('/api/v1/ai/config/test')
         .set('accessToken', authToken)
-        .send({ model: 'gemini-2.5-flash', apiKey: 'test-gemini-api-key' })
+        .send({ model: 'gemini-3.6-flash', apiKey: 'test-gemini-api-key' })
         .expect(502);
 
       expect(response.body.message).toMatch(/unable to reach gemini/i);
@@ -280,7 +284,7 @@ describe('AI Config API Integration Tests', () => {
       await request(app)
         .post('/api/v1/ai/config/test')
         .set('accessToken', authToken)
-        .send({ model: 'gemini-2.5-flash' })
+        .send({ model: 'gemini-3.6-flash' })
         .expect(400);
 
       expect(mockInvoke).not.toHaveBeenCalled();
@@ -289,7 +293,7 @@ describe('AI Config API Integration Tests', () => {
     it('returns 401 when no auth token provided', async () => {
       await request(app)
         .post('/api/v1/ai/config/test')
-        .send({ model: 'gemini-2.5-flash', apiKey: 'test-gemini-api-key' })
+        .send({ model: 'gemini-3.6-flash', apiKey: 'test-gemini-api-key' })
         .expect(401);
 
       expect(mockInvoke).not.toHaveBeenCalled();
@@ -303,7 +307,7 @@ describe('AI Config API Integration Tests', () => {
       await request(app)
         .put('/api/v1/ai/config')
         .set('accessToken', authToken)
-        .send({ model: 'gemini-2.5-flash', apiKey: 'user-a-key' })
+        .send({ model: 'gemini-3.6-flash', apiKey: 'user-a-key' })
         .expect(200);
 
       // User B has no configuration of their own.

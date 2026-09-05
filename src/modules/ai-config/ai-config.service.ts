@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { ChatOpenAI } from '@langchain/openai';
 import { AIUserConfig, IAIUserConfig } from './models/ai-user-config.model';
-import { GeminiModel } from './constants/gemini-models';
+import { GeminiModel, GEMINI_OPENAI_COMPAT_BASE_URL } from './constants/gemini-models';
 import { encrypt } from '../../shared/utils/encryption.util';
 import { CustomError } from '../../shared/core/ApiError';
 
@@ -27,6 +27,10 @@ function toSafeConfig(doc: IAIUserConfig | null): SafeAIConfig {
 
 // Maps a raw Gemini/LangChain failure to a safe, generic application error.
 // Never surfaces the raw provider error object/payload to the caller.
+//
+// Only a genuine HTTP 404 from the provider is treated as an invalid model — matching
+// on the word "model" in the message was too broad and could misclassify unrelated
+// SDK/API compatibility failures (e.g. transport/version errors) as a bad model ID.
 function mapGeminiTestError(error: unknown): CustomError {
   const status = (error as { status?: number })?.status;
   const message = ((error as { message?: string })?.message || '').toLowerCase();
@@ -34,7 +38,7 @@ function mapGeminiTestError(error: unknown): CustomError {
   if (status === 401 || status === 403 || message.includes('api key')) {
     return new CustomError('Invalid or unauthorized Gemini API key', 400);
   }
-  if (status === 404 || message.includes('model')) {
+  if (status === 404) {
     return new CustomError('Invalid or unsupported Gemini model', 400);
   }
   return new CustomError('Unable to reach Gemini. Please try again later.', 502);
@@ -75,7 +79,13 @@ class AIConfigService {
   }
 
   async testConnection(model: GeminiModel, apiKey: string): Promise<{ success: true }> {
-    const llm = new ChatGoogleGenerativeAI({ apiKey, model, temperature: 0, maxOutputTokens: 1 });
+    const llm = new ChatOpenAI({
+      apiKey,
+      model,
+      temperature: 0,
+      maxTokens: 1,
+      configuration: { baseURL: GEMINI_OPENAI_COMPAT_BASE_URL },
+    });
 
     try {
       await llm.invoke('ping');

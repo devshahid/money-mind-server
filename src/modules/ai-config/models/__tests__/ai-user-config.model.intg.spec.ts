@@ -12,7 +12,7 @@ describe('AIUserConfig model', () => {
   const validDoc = () => ({
     userId: new Types.ObjectId(),
     provider: 'gemini' as const,
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.6-flash',
     encryptedApiKey: 'ciphertext-base64',
     apiKeyIv: 'iv-base64',
     apiKeyAuthTag: 'auth-tag-base64',
@@ -37,7 +37,7 @@ describe('AIUserConfig model', () => {
 
     expect(doc._id).toBeDefined();
     expect(doc.provider).toBe('gemini');
-    expect(doc.model).toBe('gemini-2.5-flash');
+    expect(doc.model).toBe('gemini-3.6-flash');
     expect(doc.isActive).toBe(true);
     expect((doc as unknown as { createdAt: Date }).createdAt).toBeInstanceOf(Date);
     expect((doc as unknown as { updatedAt: Date }).updatedAt).toBeInstanceOf(Date);

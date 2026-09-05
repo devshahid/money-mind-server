@@ -4,6 +4,7 @@ import { ChatOllama } from '@langchain/ollama';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { Types } from 'mongoose';
 import { AIUserConfig } from '../../ai-config/models/ai-user-config.model';
+import { GEMINI_OPENAI_COMPAT_BASE_URL } from '../../ai-config/constants/gemini-models';
 import { decrypt } from '../../../shared/utils/encryption.util';
 
 /**
@@ -59,9 +60,12 @@ export function createLLM(temperature = 0.7): BaseChatModel {
  * Resolve the LLM to use for a given user.
  *
  * If the user has an active Gemini configuration, decrypts their stored API key and
- * returns a ChatGoogleGenerativeAI instance for it. Otherwise (no userId, no config,
- * inactive config, or a decryption failure) falls back to the existing createLLM()
- * behavior unchanged (Ollama/OpenAI). Never logs or returns the decrypted API key.
+ * returns a ChatOpenAI instance pointed at Gemini's OpenAI-compatible endpoint for it
+ * (see GEMINI_OPENAI_COMPAT_BASE_URL — @langchain/google-genai depends on the deprecated,
+ * unmaintained @google/generative-ai SDK, which 404s for current Gemini models). Otherwise
+ * (no userId, no config, inactive config, or a decryption failure) falls back to the
+ * existing createLLM() behavior unchanged (Ollama/OpenAI). Never logs or returns the
+ * decrypted API key.
  */
 export async function resolveLLM(
   userId: Types.ObjectId | string | undefined,
@@ -82,11 +86,13 @@ export async function resolveLLM(
       authTag: config.apiKeyAuthTag,
     });
 
-    // Loaded lazily so modules that never resolve a Gemini config (e.g. local
-    // dev/tests using the Ollama/OpenAI fallback) never pay for/trigger this import.
-    const { ChatGoogleGenerativeAI } = await import('@langchain/google-genai');
     console.info(`🤖 Using Gemini -> ${config.model}`);
-    return new ChatGoogleGenerativeAI({ apiKey, model: config.model, temperature });
+    return new ChatOpenAI({
+      apiKey,
+      model: config.model,
+      temperature,
+      configuration: { baseURL: GEMINI_OPENAI_COMPAT_BASE_URL },
+    });
   } catch (error) {
     console.error(
       'Failed to resolve user Gemini configuration, falling back to default LLM:',
