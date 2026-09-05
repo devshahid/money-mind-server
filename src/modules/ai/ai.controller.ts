@@ -2,6 +2,7 @@ import { asyncHandler } from '../../shared/utils';
 import ResponseHandler from '../../shared/utils/responseHandler';
 import { CustomRequest } from '../../shared/middlewares/auth/authHandler';
 import { Response } from 'express';
+import { Types } from 'mongoose';
 import { CustomError } from '../../shared/core/ApiError';
 import aiService from './ai.service';
 import { TransactionLogs, ITransactionLogs } from '../transactions/models/transaction-logs.model';
@@ -90,7 +91,7 @@ class AIController extends ResponseHandler {
     });
 
     // Kick off background processing (fire-and-forget)
-    this.processCategorizationJob(job._id.toString(), transactions).catch((err) => {
+    this.processCategorizationJob(job._id.toString(), transactions, userId).catch((err) => {
       console.error('[ERROR]:: Background categorization job failed:', err);
     });
 
@@ -115,7 +116,8 @@ class AIController extends ResponseHandler {
    */
   private async processCategorizationJob(
     jobId: string,
-    transactions: ITransactionLogs[]
+    transactions: ITransactionLogs[],
+    userId: Types.ObjectId
   ): Promise<void> {
     try {
       await CategorizationJob.findByIdAndUpdate(jobId, {
@@ -150,7 +152,7 @@ class AIController extends ResponseHandler {
         const chunk = transactionsData.slice(i, i + chunkSize);
 
         try {
-          const categorizations = await aiService.categorizeTransactionsBatch(chunk);
+          const categorizations = await aiService.categorizeTransactionsBatch(chunk, userId);
 
           const chunkSuggestions = categorizations.map((cat) => {
             const transaction = transactions.find((t) => t._id.toString() === cat.transactionId);
@@ -365,7 +367,7 @@ class AIController extends ResponseHandler {
     };
 
     // Get AI response
-    const aiResponse = await aiService.chat(message, context);
+    const aiResponse = await aiService.chat(message, context, userId);
 
     // Save to history
     chatHistory.messages.push({
@@ -472,11 +474,14 @@ class AIController extends ResponseHandler {
       interestRate: d.debtDetails.interestRate || 0,
     }));
 
-    const strategy = await aiService.analyzeDebtStrategy({
-      monthlyIncome,
-      debts: debtsData,
-      monthlyExpenses: avgMonthlyExpenses,
-    });
+    const strategy = await aiService.analyzeDebtStrategy(
+      {
+        monthlyIncome,
+        debts: debtsData,
+        monthlyExpenses: avgMonthlyExpenses,
+      },
+      userId
+    );
 
     await this.sendResponse(
       {
@@ -536,15 +541,18 @@ class AIController extends ResponseHandler {
       averageMonthly: Math.round(t.total / monthsCount),
     }));
 
-    const recommendations = await aiService.generateBudgetRecommendations({
-      monthlyIncome,
-      currentBudget: budget.categories.map((c) => ({
-        category: c.categoryName,
-        planned: c.plannedAmount,
-        actual: c.actualAmount,
-      })),
-      spendingHistory,
-    });
+    const recommendations = await aiService.generateBudgetRecommendations(
+      {
+        monthlyIncome,
+        currentBudget: budget.categories.map((c) => ({
+          category: c.categoryName,
+          planned: c.plannedAmount,
+          actual: c.actualAmount,
+        })),
+        spendingHistory,
+      },
+      userId
+    );
 
     await this.sendResponse(
       {

@@ -1,8 +1,9 @@
 import { PromptTemplate } from '@langchain/core/prompts';
 import { StructuredOutputParser } from '@langchain/core/output_parsers';
 import { z } from 'zod';
-import { createLLM, AI_CONFIG, AVAILABLE_CATEGORIES, CategoryType } from './config/ai.config';
+import { resolveLLM, AI_CONFIG, AVAILABLE_CATEGORIES, CategoryType } from './config/ai.config';
 import { BaseService } from '../../shared/core';
+import { Types } from 'mongoose';
 
 /**
  * AI Service for Money Mind
@@ -97,10 +98,11 @@ class AIService extends BaseService {
   async categorizeTransaction(
     narration: string,
     amount: number,
-    isCredit: boolean
+    isCredit: boolean,
+    userId?: Types.ObjectId | string
   ): Promise<CategorizationResult> {
     return this.executeWithErrorHandling(async () => {
-      const llm = createLLM(AI_CONFIG.TEMPERATURE_CATEGORIZATION);
+      const llm = await resolveLLM(userId, AI_CONFIG.TEMPERATURE_CATEGORIZATION);
       const parser = StructuredOutputParser.fromZodSchema(categorizationSchema);
 
       const prompt = PromptTemplate.fromTemplate(`
@@ -176,7 +178,8 @@ Be precise and consistent. Common patterns:
       narration: string;
       amount: number;
       isCredit: boolean;
-    }>
+    }>,
+    userId?: Types.ObjectId | string
   ): Promise<BatchCategorizationResult[]> {
     const results: BatchCategorizationResult[] = [];
 
@@ -185,7 +188,7 @@ Be precise and consistent. Common patterns:
 
     const parser = StructuredOutputParser.fromZodSchema(batchCategorizationSchema);
 
-    const llm = createLLM(AI_CONFIG.TEMPERATURE_CATEGORIZATION);
+    const llm = await resolveLLM(userId, AI_CONFIG.TEMPERATURE_CATEGORIZATION);
 
     const prompt = PromptTemplate.fromTemplate(`
 You are a highly accurate financial transaction categorization engine for the Money Mind app.
@@ -305,22 +308,25 @@ OUTPUT FORMAT
   /**
    * Analyze debts and provide debt-free strategy
    */
-  async analyzeDebtStrategy(data: {
-    monthlyIncome: number;
-    debts: Array<{
-      debtId?: string;
-      debtName: string;
-      totalAmount: number;
-      remainingAmount: number;
-      monthlyEMI: number;
-      interestRate: number;
-      emiType?: 'INTEREST_ONLY' | 'PRINCIPAL_AND_INTEREST';
-      principalComponent?: number;
-      interestComponent?: number;
-    }>;
-    monthlyExpenses: number;
-  }): Promise<DebtStrategyResult> {
-    const llm = createLLM(AI_CONFIG.TEMPERATURE_STRATEGY);
+  async analyzeDebtStrategy(
+    data: {
+      monthlyIncome: number;
+      debts: Array<{
+        debtId?: string;
+        debtName: string;
+        totalAmount: number;
+        remainingAmount: number;
+        monthlyEMI: number;
+        interestRate: number;
+        emiType?: 'INTEREST_ONLY' | 'PRINCIPAL_AND_INTEREST';
+        principalComponent?: number;
+        interestComponent?: number;
+      }>;
+      monthlyExpenses: number;
+    },
+    userId?: Types.ObjectId | string
+  ): Promise<DebtStrategyResult> {
+    const llm = await resolveLLM(userId, AI_CONFIG.TEMPERATURE_STRATEGY);
 
     const totalDebt = data.debts.reduce((sum, d) => sum + d.remainingAmount, 0);
     const totalEMI = data.debts.reduce((sum, d) => sum + d.monthlyEMI, 0);
@@ -456,19 +462,22 @@ IMPORTANT: Return ONLY the JSON object, no other text.
   /**
    * Generate budget recommendations based on income and spending patterns
    */
-  async generateBudgetRecommendations(data: {
-    monthlyIncome: number;
-    currentBudget: Array<{
-      category: string;
-      planned: number;
-      actual: number;
-    }>;
-    spendingHistory: Array<{
-      category: string;
-      averageMonthly: number;
-    }>;
-  }): Promise<BudgetRecommendation[]> {
-    const llm = createLLM(AI_CONFIG.TEMPERATURE_STRATEGY);
+  async generateBudgetRecommendations(
+    data: {
+      monthlyIncome: number;
+      currentBudget: Array<{
+        category: string;
+        planned: number;
+        actual: number;
+      }>;
+      spendingHistory: Array<{
+        category: string;
+        averageMonthly: number;
+      }>;
+    },
+    userId?: Types.ObjectId | string
+  ): Promise<BudgetRecommendation[]> {
+    const llm = await resolveLLM(userId, AI_CONFIG.TEMPERATURE_STRATEGY);
 
     const prompt = PromptTemplate.fromTemplate(`
 You are a financial planning expert helping optimize a budget.
@@ -528,8 +537,12 @@ Provide recommendations in JSON array format:
   /**
    * General chat for financial questions
    */
-  async chat(message: string, context?: Record<string, unknown>): Promise<string> {
-    const llm = createLLM(AI_CONFIG.TEMPERATURE_CHAT);
+  async chat(
+    message: string,
+    context?: Record<string, unknown>,
+    userId?: Types.ObjectId | string
+  ): Promise<string> {
+    const llm = await resolveLLM(userId, AI_CONFIG.TEMPERATURE_CHAT);
 
     const prompt = PromptTemplate.fromTemplate(`
 You are a helpful financial assistant for Money Mind, a personal finance management app.
