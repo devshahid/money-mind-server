@@ -4,6 +4,7 @@
  */
 
 export { aiRoute } from './ai/ai.routes';
+export { aiConfigRoute } from './ai-config/ai-config.routes';
 export { transactionLogsRoute } from './transactions/transaction.routes';
 export { transactionGroupsRoute } from './transactions/transaction-group.routes';
 export { ledgerRoute } from './transactions/ledger.routes';
