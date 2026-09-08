@@ -108,7 +108,7 @@ describe('encryption.util', () => {
 
     it('throws a clear error when ENCRYPTION_MASTER_KEY is malformed (not base64)', () => {
       // Contains characters outside the base64 alphabet in a way that still decodes to wrong length.
-      process.env.ENCRYPTION_MASTER_KEY = 'not-a-32-byte-key';
+      process.env.ENCRYPTION_MASTER_KEY = 'invalid-key!';
       jest.resetModules();
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const fresh = require('../encryption.util') as typeof import('../encryption.util');
