@@ -1,3 +1,9 @@
+## [4.0.1](https://github.com/devshahid/money-mind-server/compare/v4.0.0...v4.0.1) (2026-09-08)
+
+### Bug Fixes
+
+- **ledger:** batch unlink sync operations ([761d798](https://github.com/devshahid/money-mind-server/commit/761d7986dba6fec3592bb76b71af9e52f02469a5))
+
 ## [4.0.0](https://github.com/devshahid/money-mind-server/compare/v3.0.0...v4.0.0) (2026-09-03)
 
 ### ⚠ BREAKING CHANGES
