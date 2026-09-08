@@ -1,3 +1,9 @@
+## [4.1.0](https://github.com/devshahid/money-mind-server/compare/v4.0.2...v4.1.0) (2026-09-08)
+
+### Features
+
+- **ai:** add Gemini AI configuration and integration ([#23](https://github.com/devshahid/money-mind-server/issues/23)) ([570789c](https://github.com/devshahid/money-mind-server/commit/570789c6e14f4556644e2b315a69f6759bc25726))
+
 ## [4.0.2](https://github.com/devshahid/money-mind-server/compare/v4.0.1...v4.0.2) (2026-09-08)
 
 ### Bug Fixes
