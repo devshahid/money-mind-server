@@ -126,6 +126,54 @@ describe('Ledger Sync API (Integration)', () => {
     expect(response.body.output.entries[0].amount).toBe(500);
   });
 
+  it('returns ledger entry count and balance summaries and supports clientId detail reads', async () => {
+    const now = new Date().toISOString();
+    const clientId = 'ledger-summary-1';
+    await Ledger.create({
+      userId: user.userId,
+      clientId,
+      partyName: 'Summary Ledger',
+      createdAt: now,
+      updatedAt: now,
+    });
+    await LedgerEntry.insertMany([
+      {
+        id: 'summary-entry-1',
+        userId: user.userId,
+        ledgerId: clientId,
+        transactionId: 'summary-tx-1',
+        direction: 'i_paid',
+        amount: 100,
+        createdAt: now,
+      },
+      {
+        id: 'summary-entry-2',
+        userId: user.userId,
+        ledgerId: clientId,
+        transactionId: 'summary-tx-2',
+        direction: 'they_paid',
+        amount: 25,
+        createdAt: now,
+      },
+    ]);
+
+    const listResponse = await request(app)
+      .get('/api/v1/ledgers')
+      .set('accessToken', user.token)
+      .expect(200);
+
+    expect(listResponse.body.output).toEqual(
+      expect.arrayContaining([expect.objectContaining({ clientId, entryCount: 2, balance: 75 })])
+    );
+
+    const detailResponse = await request(app)
+      .get(`${SYNC_URL.replace('/sync', '')}/${clientId}`)
+      .set('accessToken', user.token)
+      .expect(200);
+
+    expect(detailResponse.body.output.entries).toHaveLength(2);
+  });
+
   it('syncs 155 contiguous link operations through the batched path', async () => {
     const now = new Date().toISOString();
     const clientId = 'ledger-client-155';

@@ -54,7 +54,33 @@ class LedgerService {
    * Get all ledgers for user
    */
   async getAll() {
-    return Ledger.find({ userId: this.userId }).sort({ updatedAt: -1 });
+    const ledgers = await Ledger.find({ userId: this.userId }).sort({ updatedAt: -1 }).lean();
+    const ledgerClientIds = ledgers.map((ledger) => ledger.clientId);
+    const summaries = await LedgerEntry.aggregate([
+      { $match: { userId: this.userId.toString(), ledgerId: { $in: ledgerClientIds } } },
+      {
+        $group: {
+          _id: '$ledgerId',
+          entryCount: { $sum: 1 },
+          balance: {
+            $sum: {
+              $cond: [{ $eq: ['$direction', 'i_paid'] }, '$amount', { $multiply: ['$amount', -1] }],
+            },
+          },
+        },
+      },
+    ]);
+    const summariesByLedgerId = new Map(
+      summaries.map((summary) => [
+        summary._id,
+        { entryCount: summary.entryCount, balance: summary.balance },
+      ])
+    );
+
+    return ledgers.map((ledger) => ({
+      ...ledger,
+      ...(summariesByLedgerId.get(ledger.clientId) || { entryCount: 0, balance: 0 }),
+    }));
   }
 
   /**
@@ -64,10 +90,13 @@ class LedgerService {
    * with the offline-first client), not the Mongo _id.
    */
   async getWithEntries(ledgerId: string | Types.ObjectId) {
-    const ledger = await Ledger.findOne({
-      _id: new Types.ObjectId(ledgerId),
-      userId: this.userId,
-    });
+    const ledgerQuery = Types.ObjectId.isValid(ledgerId.toString())
+      ? {
+          userId: this.userId,
+          $or: [{ _id: new Types.ObjectId(ledgerId) }, { clientId: ledgerId.toString() }],
+        }
+      : { userId: this.userId, clientId: ledgerId.toString() };
+    const ledger = await Ledger.findOne(ledgerQuery);
 
     if (!ledger) return null;
 

@@ -408,8 +408,8 @@ describe('LedgerService (Unit Tests)', () => {
       expect(result).toBeDefined();
       expect(result?.partyName).toBe('John Doe');
       expect(Ledger.findOne).toHaveBeenCalledWith({
-        _id: mockLedgerId,
         userId: mockUserId,
+        $or: [{ _id: mockLedgerId }, { clientId: mockLedgerId.toString() }],
       });
     });
 

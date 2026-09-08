@@ -41,7 +41,7 @@ class LedgerController extends ResponseHandler {
     const { id } = req.params as { id: string };
     if (!req.user?._id) throw new CustomError('Please login first!!');
     const service = new LedgerService(req.user._id);
-    const ledger = await service.getWithEntries(new Types.ObjectId(id));
+    const ledger = await service.getWithEntries(id);
     if (!ledger) throw new CustomError('Ledger not found', 404);
     await this.sendResponse(ledger, res);
   });
