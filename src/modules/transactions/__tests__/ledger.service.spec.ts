@@ -47,6 +47,275 @@ describe('LedgerService (Unit Tests)', () => {
     (LedgerEntry.find as any).mockReturnValue(chain);
   };
 
+  const makeLinkOperation = (id: string, ledgerId = 'ledger-1', transactionId = id): any => ({
+    id: `op-${id}`,
+    type: 'link_entry',
+    entry: {
+      id,
+      ledgerId,
+      transactionId,
+      direction: 'i_paid',
+      amount: 100,
+      createdAt: new Date().toISOString(),
+    },
+  });
+
+  const makeUnlinkOperation = (id: string, ledgerId = 'ledger-1'): any => ({
+    id: `op-unlink-${id}`,
+    type: 'unlink_entry',
+    ledgerId,
+    entryId: id,
+  });
+
+  describe('syncOperations()', () => {
+    it('uses one batched insert for 155 contiguous link operations', async () => {
+      const operations = Array.from({ length: 155 }, (_, index) =>
+        makeLinkOperation(`entry-${index}`)
+      );
+      mockFinalReads([], [], [{ clientId: 'ledger-1' }]);
+      (LedgerEntry.bulkWrite as any).mockResolvedValue({});
+
+      const result = await service.syncOperations(operations);
+
+      expect(LedgerEntry.findOne).not.toHaveBeenCalled();
+      expect(LedgerEntry.create).not.toHaveBeenCalled();
+      expect(LedgerEntry.bulkWrite).toHaveBeenCalledTimes(1);
+      expect((LedgerEntry.bulkWrite as any).mock.calls[0][0]).toHaveLength(155);
+      expect((LedgerEntry.bulkWrite as any).mock.calls[0][1]).toEqual({ ordered: true });
+      expect(result.processedOperationIds).toHaveLength(155);
+    });
+
+    it('preserves duplicate, existing, and unauthorized link semantics', async () => {
+      const operations = [
+        makeLinkOperation('entry-new', 'ledger-1', 'tx-new'),
+        makeLinkOperation('entry-new', 'ledger-1', 'tx-other-id'),
+        makeLinkOperation('entry-other', 'ledger-1', 'tx-new'),
+        makeLinkOperation('entry-existing', 'ledger-1', 'tx-existing'),
+        makeLinkOperation('entry-foreign', 'ledger-foreign', 'tx-foreign'),
+      ];
+      mockFinalReads([], [], [{ clientId: 'ledger-1' }]);
+      (Ledger.find as any).mockImplementation((query: any) => {
+        if (query.clientId?.$in) {
+          return {
+            select: jest.fn().mockReturnValue({
+              lean: jest.fn().mockResolvedValue([{ clientId: 'ledger-1' }]),
+            }),
+          };
+        }
+        if (query.$or) {
+          return {
+            lean: jest
+              .fn()
+              .mockResolvedValue([
+                { id: 'entry-existing', ledgerId: 'ledger-1', transactionId: 'tx-existing' },
+              ]),
+          };
+        }
+        return {
+          sort: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }),
+        };
+      });
+      (LedgerEntry.bulkWrite as any).mockResolvedValue({});
+
+      const result = await service.syncOperations(operations);
+
+      expect(result.processedOperationIds).toEqual([
+        'op-entry-new',
+        'op-entry-new',
+        'op-entry-other',
+        'op-entry-existing',
+      ]);
+      expect((LedgerEntry.bulkWrite as any).mock.calls[0][0]).toHaveLength(1);
+      expect((LedgerEntry.bulkWrite as any).mock.calls[0][0][0].insertOne.document).toEqual(
+        expect.objectContaining({ id: 'entry-new', userId: mockUserId })
+      );
+    });
+
+    it('keeps link blocks separated by upsert and delete operations', async () => {
+      const operations = [
+        makeLinkOperation('before-upsert', 'ledger-before'),
+        {
+          id: 'op-upsert',
+          type: 'upsert_ledger',
+          ledger: {
+            clientId: 'ledger-after',
+            partyName: 'After',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        },
+        makeLinkOperation('after-upsert', 'ledger-after'),
+        { id: 'op-delete', type: 'delete_ledger', ledgerId: 'ledger-after' },
+        makeLinkOperation('after-delete', 'ledger-after'),
+      ];
+      let linkBlock = 0;
+      (Ledger.find as any).mockImplementation((query: any) => {
+        if (query.clientId?.$in) {
+          linkBlock += 1;
+          return {
+            select: jest.fn().mockReturnValue({
+              lean: jest
+                .fn()
+                .mockResolvedValue(linkBlock === 2 ? [{ clientId: 'ledger-after' }] : []),
+            }),
+          };
+        }
+        if (query.$or) {
+          return { lean: jest.fn().mockResolvedValue([]) };
+        }
+        return {
+          sort: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }),
+        };
+      });
+      (Ledger.findOne as any).mockResolvedValue(null);
+      (Ledger.create as any).mockResolvedValue({});
+      (Ledger.findOneAndDelete as any).mockResolvedValue({ clientId: 'ledger-after' });
+      (LedgerEntry.deleteMany as any).mockResolvedValue({});
+      (LedgerEntry.bulkWrite as any).mockResolvedValue({});
+
+      const result = await service.syncOperations(operations);
+
+      expect(LedgerEntry.bulkWrite).toHaveBeenCalledTimes(1);
+      expect((LedgerEntry.bulkWrite as any).mock.calls[0][0][0].insertOne.document.id).toBe(
+        'after-upsert'
+      );
+      expect(result.processedOperationIds).toEqual(['op-upsert', 'op-after-upsert', 'op-delete']);
+    });
+
+    it('propagates ordered bulk duplicate-key failures', async () => {
+      mockFinalReads([], [], [{ clientId: 'ledger-1' }]);
+      const duplicateError = Object.assign(new Error('duplicate key'), { code: 11000 });
+      (LedgerEntry.bulkWrite as any).mockRejectedValue(duplicateError);
+
+      await expect(service.syncOperations([makeLinkOperation('entry-1')])).rejects.toBe(
+        duplicateError
+      );
+      expect((LedgerEntry.bulkWrite as any).mock.calls[0][1]).toEqual({ ordered: true });
+    });
+
+    it('performs no link database work for an empty operation list', async () => {
+      mockFinalReads();
+
+      const result = await service.syncOperations([]);
+
+      expect(LedgerEntry.bulkWrite).not.toHaveBeenCalled();
+      expect(result.processedOperationIds).toEqual([]);
+    });
+
+    it('uses one ownership lookup and deleteMany for 173 contiguous unlink operations', async () => {
+      const operations = Array.from({ length: 173 }, (_, index) =>
+        makeUnlinkOperation(`entry-${index}`)
+      );
+      (Ledger.find as any).mockImplementation((query: any) => {
+        if (query.clientId?.$in) {
+          return {
+            select: jest.fn().mockReturnValue({
+              lean: jest.fn().mockResolvedValue([{ clientId: 'ledger-1' }]),
+            }),
+          };
+        }
+        return {
+          sort: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }),
+        };
+      });
+      (LedgerEntry.deleteMany as any).mockResolvedValue({ deletedCount: 173 });
+
+      const result = await service.syncOperations(operations);
+
+      expect(Ledger.exists).not.toHaveBeenCalled();
+      expect(LedgerEntry.deleteOne).not.toHaveBeenCalled();
+      expect(LedgerEntry.deleteMany).toHaveBeenCalledTimes(1);
+      expect((LedgerEntry.deleteMany as any).mock.calls[0][0]).toEqual({
+        userId: mockUserId,
+        $or: [
+          { ledgerId: 'ledger-1', id: { $in: operations.map((operation) => operation.entryId) } },
+        ],
+      });
+      expect(result.processedOperationIds).toEqual(operations.map((operation) => operation.id));
+    });
+
+    it('acknowledges owned missing and duplicate unlinks, skips unauthorized operations, and deduplicates deletes', async () => {
+      const operations = [
+        makeUnlinkOperation('entry-1'),
+        makeUnlinkOperation('missing-entry'),
+        makeUnlinkOperation('entry-1'),
+        makeUnlinkOperation('foreign-entry', 'foreign-ledger'),
+      ];
+      (Ledger.find as any).mockImplementation((query: any) => {
+        if (query.clientId?.$in) {
+          return {
+            select: jest.fn().mockReturnValue({
+              lean: jest.fn().mockResolvedValue([{ clientId: 'ledger-1' }]),
+            }),
+          };
+        }
+        return {
+          sort: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }),
+        };
+      });
+      (LedgerEntry.deleteMany as any).mockResolvedValue({ deletedCount: 1 });
+
+      const result = await service.syncOperations(operations);
+
+      expect((LedgerEntry.deleteMany as any).mock.calls[0][0]).toEqual({
+        userId: mockUserId,
+        $or: [{ ledgerId: 'ledger-1', id: { $in: ['entry-1', 'missing-entry'] } }],
+      });
+      expect(result.processedOperationIds).toEqual([
+        'op-unlink-entry-1',
+        'op-unlink-missing-entry',
+        'op-unlink-entry-1',
+      ]);
+    });
+
+    it('keeps unlink blocks separated by normal operations and preserves acknowledgement order', async () => {
+      const operations = [
+        makeUnlinkOperation('entry-before', 'ledger-before'),
+        { id: 'op-delete', type: 'delete_ledger', ledgerId: 'other-ledger' },
+        makeUnlinkOperation('entry-after', 'ledger-after'),
+      ];
+      (Ledger.find as any).mockImplementation((query: any) => {
+        if (query.clientId?.$in) {
+          return {
+            select: jest.fn().mockReturnValue({
+              lean: jest
+                .fn()
+                .mockResolvedValue(query.clientId.$in.map((clientId: string) => ({ clientId }))),
+            }),
+          };
+        }
+        return {
+          sort: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }),
+        };
+      });
+      (Ledger.findOneAndDelete as any).mockResolvedValue(null);
+      (LedgerEntry.deleteMany as any).mockResolvedValue({ deletedCount: 1 });
+
+      const result = await service.syncOperations(operations);
+
+      expect(LedgerEntry.deleteMany).toHaveBeenCalledTimes(2);
+      expect(result.processedOperationIds).toEqual([
+        'op-unlink-entry-before',
+        'op-delete',
+        'op-unlink-entry-after',
+      ]);
+    });
+
+    it('propagates unlink deleteMany failures', async () => {
+      (Ledger.find as any).mockReturnValue({
+        select: jest
+          .fn()
+          .mockReturnValue({ lean: jest.fn().mockResolvedValue([{ clientId: 'ledger-1' }]) }),
+      });
+      const deleteError = Object.assign(new Error('delete failed'), { code: 91 });
+      (LedgerEntry.deleteMany as any).mockRejectedValue(deleteError);
+
+      await expect(service.syncOperations([makeUnlinkOperation('entry-1')])).rejects.toBe(
+        deleteError
+      );
+    });
+  });
+
   describe('create()', () => {
     it('should create a new ledger with valid partyName and clientId', async () => {
       const mockLedger = {

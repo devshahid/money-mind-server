@@ -126,6 +126,88 @@ describe('Ledger Sync API (Integration)', () => {
     expect(response.body.output.entries[0].amount).toBe(500);
   });
 
+  it('syncs 155 contiguous link operations through the batched path', async () => {
+    const now = new Date().toISOString();
+    const clientId = 'ledger-client-155';
+    const operations = [
+      {
+        id: 'op-ledger-155',
+        type: 'upsert_ledger',
+        ledger: {
+          clientId,
+          partyName: 'Batch Test',
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+      ...Array.from({ length: 155 }, (_, index) => ({
+        id: `op-entry-${index}`,
+        type: 'link_entry',
+        entry: {
+          id: `entry-${index}`,
+          ledgerId: clientId,
+          transactionId: `transaction-${index}`,
+          direction: 'i_paid',
+          amount: index + 1,
+          createdAt: now,
+        },
+      })),
+    ];
+
+    const response = await request(app)
+      .put(SYNC_URL)
+      .set('accessToken', user.token)
+      .send({ operations })
+      .expect(200);
+
+    expect(response.body.output.processedOperationIds).toHaveLength(156);
+    expect(response.body.output.entries).toHaveLength(155);
+    expect(await LedgerEntry.countDocuments({ userId: user.userId, ledgerId: clientId })).toBe(155);
+  });
+
+  it('syncs 173 contiguous unlink operations while preserving the ledger', async () => {
+    const now = new Date().toISOString();
+    const clientId = 'ledger-client-unlink-173';
+    await Ledger.create({
+      userId: user.userId,
+      clientId,
+      partyName: 'Bulk Remove Test',
+      createdAt: now,
+      updatedAt: now,
+    });
+    await LedgerEntry.insertMany(
+      Array.from({ length: 173 }, (_, index) => ({
+        id: `unlink-entry-${index}`,
+        userId: user.userId,
+        ledgerId: clientId,
+        transactionId: `unlink-transaction-${index}`,
+        direction: 'i_paid' as const,
+        amount: index + 1,
+        createdAt: now,
+      }))
+    );
+    const operations = Array.from({ length: 173 }, (_, index) => ({
+      id: `op-unlink-${index}`,
+      type: 'unlink_entry',
+      ledgerId: clientId,
+      entryId: `unlink-entry-${index}`,
+    }));
+
+    const response = await request(app)
+      .put(SYNC_URL)
+      .set('accessToken', user.token)
+      .send({ operations })
+      .expect(200);
+
+    expect(response.body.output.processedOperationIds).toEqual(
+      operations.map((operation) => operation.id)
+    );
+    expect(response.body.output.ledgers).toHaveLength(1);
+    expect(response.body.output.entries).toHaveLength(0);
+    expect(await Ledger.findOne({ userId: user.userId, clientId })).not.toBeNull();
+    expect(await LedgerEntry.countDocuments({ userId: user.userId, ledgerId: clientId })).toBe(0);
+  });
+
   it("does NOT leak another user's entries in the sync response (isolation)", async () => {
     const now = new Date().toISOString();
 
@@ -299,5 +381,106 @@ describe('Ledger Sync API (Integration)', () => {
       .expect((res) => {
         expect(res.status).not.toBe(200);
       });
+  });
+
+  describe('Regression: upsert_ledger with clientId becomes owned ledger for link operations', () => {
+    it('accepts production-shaped upsert_ledger operation with clientId and creates ledger on server', async () => {
+      const now = new Date().toISOString();
+      const clientId = 'production-ledger-1';
+
+      // Production-shaped operation: upsert_ledger with ledger object containing clientId
+      const response = await request(app)
+        .put(SYNC_URL)
+        .set('accessToken', user.token)
+        .send({
+          operations: [
+            {
+              id: 'op-upsert-1',
+              type: 'upsert_ledger',
+              ledger: {
+                clientId, // Production contract: ledger.clientId must be set
+                partyName: 'Production Ledger',
+                createdAt: now,
+                updatedAt: now,
+              },
+            },
+          ],
+        })
+        .expect(200);
+
+      // Verify the ledger was created on the server
+      expect(response.body.status).toBe(true);
+      expect(response.body.output.processedOperationIds).toContain('op-upsert-1');
+
+      const persistedLedger = await Ledger.findOne({ userId: user.userId, clientId });
+      expect(persistedLedger).not.toBeNull();
+      expect(persistedLedger?.partyName).toBe('Production Ledger');
+    });
+
+    it('allows link_entry to become bulk-write candidate after upsert_ledger with clientId', async () => {
+      const now = new Date().toISOString();
+      const clientId = 'regression-ledger-1';
+
+      // Send upsert_ledger followed by link_entry operations in a single sync
+      const response = await request(app)
+        .put(SYNC_URL)
+        .set('accessToken', user.token)
+        .send({
+          operations: [
+            {
+              id: 'op-upsert-regression',
+              type: 'upsert_ledger',
+              ledger: {
+                clientId,
+                partyName: 'Regression Test Ledger',
+                createdAt: now,
+                updatedAt: now,
+              },
+            },
+            // These link_entry operations should become bulk candidates because the ledger
+            // was just created with the matching clientId in the same batch
+            {
+              id: 'op-link-1',
+              type: 'link_entry',
+              entry: {
+                id: 'entry-1',
+                ledgerId: clientId,
+                transactionId: 'tx-1',
+                direction: 'i_paid',
+                amount: 100,
+                createdAt: now,
+              },
+            },
+            {
+              id: 'op-link-2',
+              type: 'link_entry',
+              entry: {
+                id: 'entry-2',
+                ledgerId: clientId,
+                transactionId: 'tx-2',
+                direction: 'they_paid',
+                amount: 50,
+                createdAt: now,
+              },
+            },
+          ],
+        })
+        .expect(200);
+
+      // All 3 operations (1 upsert + 2 links) should be processed successfully
+      expect(response.body.output.processedOperationIds).toHaveLength(3);
+      expect(response.body.output.processedOperationIds).toContain('op-upsert-regression');
+      expect(response.body.output.processedOperationIds).toContain('op-link-1');
+      expect(response.body.output.processedOperationIds).toContain('op-link-2');
+
+      // Both entries should be created on the server
+      expect(response.body.output.entries).toHaveLength(2);
+
+      // Verify entries were persisted
+      const entries = await LedgerEntry.find({ userId: user.userId, ledgerId: clientId }).lean();
+      expect(entries).toHaveLength(2);
+      expect(entries[0].transactionId).toMatch(/tx-[12]/);
+      expect(entries[1].transactionId).toMatch(/tx-[12]/);
+    });
   });
 });

@@ -205,12 +205,174 @@ class LedgerService {
   async syncOperations(operations: SyncOperation[]) {
     const processedOperationIds: string[] = [];
 
-    for (const operation of operations) {
-      if (!operation?.id) continue;
+    const processLinkBlock = async (
+      linkOperations: Array<Extract<SyncOperation, { type: 'link_entry' }>>
+    ) => {
+      const ledgerClientIds = [
+        ...new Set(linkOperations.map((operation) => operation.entry.ledgerId)),
+      ];
+      const entryIds = [...new Set(linkOperations.map((operation) => operation.entry.id))];
+
+      const ownedLedgers = await Ledger.find({
+        userId: this.userId,
+        clientId: { $in: ledgerClientIds },
+      })
+        .select('clientId')
+        .lean();
+
+      const ownedLedgerClientIds = new Set(
+        ownedLedgers.map((ledger) => (ledger as { clientId: string }).clientId)
+      );
+
+      const entryPairFilters = [
+        ...new Map(
+          linkOperations.map((operation) => {
+            const { ledgerId, transactionId } = operation.entry;
+            return [`${ledgerId}\u0000${transactionId}`, { ledgerId, transactionId }];
+          })
+        ).values(),
+      ];
+
+      const existingEntries = await LedgerEntry.find({
+        userId: this.userId,
+        $or: [{ id: { $in: entryIds } }, ...entryPairFilters],
+      }).lean();
+
+      const existingEntryIds = new Set(existingEntries.map((entry) => entry.id));
+
+      const existingEntryPairs = new Set(
+        existingEntries.map((entry) => `${entry.ledgerId}\u0000${entry.transactionId}`)
+      );
+
+      const acceptedEntryIds = new Set<string>();
+      const acceptedEntryPairs = new Set<string>();
+
+      const pendingInserts: Array<{
+        insertOne: { document: Record<string, unknown> };
+      }> = [];
+
+      const blockProcessedOperationIds: string[] = [];
+
+      for (const operation of linkOperations) {
+        const entry = operation.entry;
+        const entryPair = `${entry.ledgerId}\u0000${entry.transactionId}`;
+
+        if (!ownedLedgerClientIds.has(entry.ledgerId)) continue;
+
+        blockProcessedOperationIds.push(operation.id);
+        if (
+          existingEntryIds.has(entry.id) ||
+          existingEntryPairs.has(entryPair) ||
+          acceptedEntryIds.has(entry.id) ||
+          acceptedEntryPairs.has(entryPair)
+        ) {
+          continue;
+        }
+
+        acceptedEntryIds.add(entry.id);
+        acceptedEntryPairs.add(entryPair);
+        pendingInserts.push({
+          insertOne: {
+            document: {
+              ...entry,
+              userId: this.userId,
+            },
+          },
+        });
+      }
+
+      if (pendingInserts.length > 0) {
+        await LedgerEntry.bulkWrite(pendingInserts, { ordered: true });
+      }
+
+      processedOperationIds.push(...blockProcessedOperationIds);
+    };
+
+    const processUnlinkBlock = async (
+      unlinkOperations: Array<Extract<SyncOperation, { type: 'unlink_entry' }>>
+    ) => {
+      const ledgerClientIds = [...new Set(unlinkOperations.map((operation) => operation.ledgerId))];
+      const ownedLedgers = await Ledger.find({
+        userId: this.userId,
+        clientId: { $in: ledgerClientIds },
+      })
+        .select('clientId')
+        .lean();
+      const ownedLedgerClientIds = new Set(
+        ownedLedgers.map((ledger) => (ledger as { clientId: string }).clientId)
+      );
+      const entryIdsByLedger = new Map<string, Set<string>>();
+      const blockProcessedOperationIds: string[] = [];
+
+      for (const operation of unlinkOperations) {
+        if (!ownedLedgerClientIds.has(operation.ledgerId)) continue;
+
+        blockProcessedOperationIds.push(operation.id);
+        const entryIds = entryIdsByLedger.get(operation.ledgerId) || new Set<string>();
+        entryIds.add(operation.entryId);
+        entryIdsByLedger.set(operation.ledgerId, entryIds);
+      }
+
+      const entryFilters = [...entryIdsByLedger].map(([ledgerId, entryIds]) => ({
+        ledgerId,
+        id: { $in: [...entryIds] },
+      }));
+      if (entryFilters.length > 0) {
+        await LedgerEntry.deleteMany({
+          userId: this.userId,
+          $or: entryFilters,
+        });
+      }
+
+      processedOperationIds.push(...blockProcessedOperationIds);
+    };
+
+    let operationIndex = 0;
+    while (operationIndex < operations.length) {
+      const operation = operations[operationIndex];
+      if (!operation?.id) {
+        operationIndex++;
+        continue;
+      }
+
+      if (operation.type === 'link_entry') {
+        const linkOperations: Array<Extract<SyncOperation, { type: 'link_entry' }>> = [];
+        while (
+          operationIndex < operations.length &&
+          operations[operationIndex]?.id &&
+          operations[operationIndex]?.type === 'link_entry'
+        ) {
+          linkOperations.push(
+            operations[operationIndex] as Extract<SyncOperation, { type: 'link_entry' }>
+          );
+          operationIndex++;
+        }
+        await processLinkBlock(linkOperations);
+        continue;
+      }
+
+      if (operation.type === 'unlink_entry') {
+        const unlinkOperations: Array<Extract<SyncOperation, { type: 'unlink_entry' }>> = [];
+        while (
+          operationIndex < operations.length &&
+          operations[operationIndex]?.id &&
+          operations[operationIndex]?.type === 'unlink_entry'
+        ) {
+          unlinkOperations.push(
+            operations[operationIndex] as Extract<SyncOperation, { type: 'unlink_entry' }>
+          );
+          operationIndex++;
+        }
+        await processUnlinkBlock(unlinkOperations);
+        continue;
+      }
 
       if (operation.type === 'upsert_ledger') {
         const incoming = operation.ledger;
-        if (!incoming?.clientId) continue;
+        if (!incoming?.clientId) {
+          operationIndex++;
+          continue;
+        }
         const existing = await Ledger.findOne({ userId: this.userId, clientId: incoming.clientId });
         if (existing) {
           const incomingTime = new Date(incoming.updatedAt || 0).getTime();
@@ -229,6 +391,7 @@ class LedgerService {
           });
         }
         processedOperationIds.push(operation.id);
+        operationIndex++;
         continue;
       }
 
@@ -240,41 +403,11 @@ class LedgerService {
         if (ledger)
           await LedgerEntry.deleteMany({ userId: this.userId, ledgerId: ledger.clientId });
         processedOperationIds.push(operation.id);
+        operationIndex++;
         continue;
       }
 
-      if (operation.type === 'unlink_entry') {
-        // The parent-ledger check prevents an entry id from being deleted from
-        // another ledger belonging to the same user.
-        const ownedLedger = await Ledger.exists({
-          userId: this.userId,
-          clientId: operation.ledgerId,
-        });
-        if (!ownedLedger) continue;
-        await LedgerEntry.deleteOne({
-          id: operation.entryId,
-          userId: this.userId,
-          ledgerId: operation.ledgerId,
-        });
-        processedOperationIds.push(operation.id);
-        continue;
-      }
-
-      if (operation.type === 'link_entry') {
-        const entry = operation.entry;
-        const ownedLedger = await Ledger.exists({ userId: this.userId, clientId: entry.ledgerId });
-        if (!ownedLedger) continue;
-        const existingById = await LedgerEntry.findOne({ id: entry.id, userId: this.userId });
-        const duplicate = await LedgerEntry.findOne({
-          userId: this.userId,
-          ledgerId: entry.ledgerId,
-          transactionId: entry.transactionId,
-        });
-        if (!existingById && !duplicate) {
-          await LedgerEntry.create({ ...entry, userId: this.userId });
-        }
-        processedOperationIds.push(operation.id);
-      }
+      operationIndex++;
     }
 
     const ledgers = await Ledger.find({ userId: this.userId }).sort({ updatedAt: -1 }).lean();
