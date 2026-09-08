@@ -1,3 +1,9 @@
+## [4.0.2](https://github.com/devshahid/money-mind-server/compare/v4.0.1...v4.0.2) (2026-09-08)
+
+### Bug Fixes
+
+- stabilize ledger sync and server-first entry caching ([1495e94](https://github.com/devshahid/money-mind-server/commit/1495e94b46db8079988d21c0eea944fc5a47e51d))
+
 ## [4.0.1](https://github.com/devshahid/money-mind-server/compare/v4.0.0...v4.0.1) (2026-09-08)
 
 ### Bug Fixes
