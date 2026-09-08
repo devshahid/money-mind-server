@@ -428,11 +428,14 @@ class DebtService {
     const income = monthlyIncome || 100000; // Default if not provided
     const expenses = monthlyExpenses || 50000; // Default if not provided
 
-    const strategy = await aiService.analyzeDebtStrategy({
-      monthlyIncome: income,
-      debts: debtData,
-      monthlyExpenses: expenses,
-    });
+    const strategy = await aiService.analyzeDebtStrategy(
+      {
+        monthlyIncome: income,
+        debts: debtData,
+        monthlyExpenses: expenses,
+      },
+      userId
+    );
 
     return {
       message: 'Debt strategy generated successfully',

@@ -32,10 +32,22 @@ app.use(
 );
 app.use(helmet());
 
+// Fields that must never be written to logs (e.g. Gemini API keys, passwords).
+const SENSITIVE_BODY_FIELDS = ['apiKey', 'password'];
+
+function redactSensitiveFields(body: unknown): unknown {
+  if (!body || typeof body !== 'object') return body;
+  const redacted: Record<string, unknown> = { ...(body as Record<string, unknown>) };
+  for (const field of SENSITIVE_BODY_FIELDS) {
+    if (field in redacted) redacted[field] = '[REDACTED]';
+  }
+  return redacted;
+}
+
 // Middleware to log requests
 app.use((req: Request, res: Response, next: NextFunction) => {
   console.log(`Received ${req.method} request at ${req.originalUrl}`);
-  if (req.body) console.log('Request Body:', req.body); // Logs request body
+  if (req.body) console.log('Request Body:', redactSensitiveFields(req.body)); // Logs request body (secrets redacted)
   if (req.params) console.log('Request Parameters:', req.params); // Logs request body
   if (req.query) console.log('Request Query:', req.query); // Logs request body
   next();

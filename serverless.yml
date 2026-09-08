@@ -14,6 +14,7 @@ provider:
     DB_NAME: ${ssm:/money-mind/prod/DB_NAME}
     DB_URL: ${ssm:/money-mind/prod/DB_URL}
     JWT_SECRET_KEY: ${ssm:/money-mind/prod/JWT_SECRET_KEY}
+    ENCRYPTION_MASTER_KEY: ${ssm:/money-mind/prod/ENCRYPTION_MASTER_KEY}
     GITHUB_TOKEN: ${ssm:/money-mind/prod/GITHUB_TOKEN, ''}
     GITHUB_MODEL: ${ssm:/money-mind/prod/GITHUB_MODEL, 'gpt-4o'}
     ENVIRONMENT: 'prod'

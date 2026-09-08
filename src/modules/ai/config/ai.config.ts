@@ -2,6 +2,10 @@ import { ChatOpenAI } from '@langchain/openai';
 import { EXPENSE_CATEGORIES, type ExpenseCategory } from '../../../shared/constants';
 import { ChatOllama } from '@langchain/ollama';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import { Types } from 'mongoose';
+import { AIUserConfig } from '../../ai-config/models/ai-user-config.model';
+import { GEMINI_OPENAI_COMPAT_BASE_URL } from '../../ai-config/constants/gemini-models';
+import { decrypt } from '../../../shared/utils/encryption.util';
 
 /**
  * AI Configuration
@@ -50,6 +54,52 @@ export function createLLM(temperature = 0.7): BaseChatModel {
   throw new Error(
     'No AI provider configured. Please ensure Ollama is running or set OPENAI_API_KEY in .env file'
   );
+}
+
+/**
+ * Resolve the LLM to use for a given user.
+ *
+ * If the user has an active Gemini configuration, decrypts their stored API key and
+ * returns a ChatOpenAI instance pointed at Gemini's OpenAI-compatible endpoint for it
+ * (see GEMINI_OPENAI_COMPAT_BASE_URL — @langchain/google-genai depends on the deprecated,
+ * unmaintained @google/generative-ai SDK, which 404s for current Gemini models). Otherwise
+ * (no userId, no config, inactive config, or a decryption failure) falls back to the
+ * existing createLLM() behavior unchanged (Ollama/OpenAI). Never logs or returns the
+ * decrypted API key.
+ */
+export async function resolveLLM(
+  userId: Types.ObjectId | string | undefined,
+  temperature = 0.7
+): Promise<BaseChatModel> {
+  if (!userId) return createLLM(temperature);
+
+  const config = await AIUserConfig.findOne({ userId, isActive: true }).select(
+    '+encryptedApiKey +apiKeyIv +apiKeyAuthTag'
+  );
+
+  if (!config) return createLLM(temperature);
+
+  try {
+    const apiKey = decrypt({
+      ciphertext: config.encryptedApiKey,
+      iv: config.apiKeyIv,
+      authTag: config.apiKeyAuthTag,
+    });
+
+    console.info(`🤖 Using Gemini -> ${config.model}`);
+    return new ChatOpenAI({
+      apiKey,
+      model: config.model,
+      temperature,
+      configuration: { baseURL: GEMINI_OPENAI_COMPAT_BASE_URL },
+    });
+  } catch (error) {
+    console.error(
+      'Failed to resolve user Gemini configuration, falling back to default LLM:',
+      (error as Error)?.message
+    );
+    return createLLM(temperature);
+  }
 }
 
 /**

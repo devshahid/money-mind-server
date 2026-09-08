@@ -12,6 +12,7 @@ import {
   budgetsRoute,
   analyticsRoute,
   aiRoute,
+  aiConfigRoute,
 } from '../modules';
 
 const router = express.Router();
@@ -39,5 +40,7 @@ router.use('/budgets', budgetsRoute);
 router.use('/analytics', analyticsRoute);
 
 router.use('/ai', aiRoute);
+
+router.use('/ai', aiConfigRoute);
 
 export default router;

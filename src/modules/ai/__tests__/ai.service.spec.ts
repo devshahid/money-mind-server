@@ -8,6 +8,8 @@
 
 import aiServiceInstance from '../ai.service';
 import { AVAILABLE_CATEGORIES } from '../config/ai.config';
+import * as aiConfig from '../config/ai.config';
+import { Types } from 'mongoose';
 
 // Mock LangChain modules
 jest.mock('@langchain/openai', () => ({
@@ -36,6 +38,14 @@ jest.mock('@langchain/core/output_parsers', () => ({
       getFormatInstructions: jest.fn().mockReturnValue('format instructions'),
       parse: jest.fn(),
     }),
+  },
+}));
+
+// resolveLLM() looks up the user's Gemini config — no config found means it falls
+// back to the mocked createLLM() (Ollama/OpenAI) below, unchanged from today's behavior.
+jest.mock('../../ai-config/models/ai-user-config.model', () => ({
+  AIUserConfig: {
+    findOne: jest.fn().mockReturnValue({ select: jest.fn().mockResolvedValue(null) }),
   },
 }));
 
@@ -491,6 +501,101 @@ describe('AIService (Unit Tests)', () => {
       expect(result).toBeDefined();
       expect(result).toBe('Your total expenses are $3000.');
       expect(mockInvoke).toHaveBeenCalled();
+    });
+  });
+
+  describe('userId propagation to resolveLLM', () => {
+    // Verifies each method forwards the authenticated userId to resolveLLM(), and that
+    // omitting it (as an unauthenticated/background caller might) still resolves the
+    // existing fallback LLM without throwing — regression safety for users with no
+    // Gemini configuration.
+    const mockUserId = new Types.ObjectId();
+
+    beforeEach(() => {
+      const { ChatOllama } = require('@langchain/ollama');
+      ChatOllama.mockImplementation(() => ({
+        invoke: jest.fn().mockResolvedValue({ content: '{}' }),
+      }));
+
+      const { StructuredOutputParser } = require('@langchain/core/output_parsers');
+      StructuredOutputParser.fromZodSchema.mockReturnValue({
+        getFormatInstructions: jest.fn().mockReturnValue('format instructions'),
+        parse: jest.fn().mockResolvedValue([]),
+      });
+    });
+
+    it('passes userId through categorizeTransaction', async () => {
+      const resolveLLMSpy = jest.spyOn(aiConfig, 'resolveLLM');
+
+      await aiService.categorizeTransaction('Pizza Hut dinner', 45.5, false, mockUserId);
+
+      expect(resolveLLMSpy).toHaveBeenCalledWith(
+        mockUserId,
+        aiConfig.AI_CONFIG.TEMPERATURE_CATEGORIZATION
+      );
+    });
+
+    it('passes userId through categorizeTransactionsBatch', async () => {
+      const resolveLLMSpy = jest.spyOn(aiConfig, 'resolveLLM');
+
+      await aiService.categorizeTransactionsBatch(
+        [{ id: 'tx1', narration: 'Pizza', amount: 100, isCredit: false }],
+        mockUserId
+      );
+
+      expect(resolveLLMSpy).toHaveBeenCalledWith(
+        mockUserId,
+        aiConfig.AI_CONFIG.TEMPERATURE_CATEGORIZATION
+      );
+    });
+
+    it('passes userId through analyzeDebtStrategy', async () => {
+      const resolveLLMSpy = jest.spyOn(aiConfig, 'resolveLLM');
+
+      await aiService.analyzeDebtStrategy(
+        {
+          monthlyIncome: 50000,
+          debts: [],
+          monthlyExpenses: 20000,
+        },
+        mockUserId
+      );
+
+      expect(resolveLLMSpy).toHaveBeenCalledWith(
+        mockUserId,
+        aiConfig.AI_CONFIG.TEMPERATURE_STRATEGY
+      );
+    });
+
+    it('passes userId through generateBudgetRecommendations', async () => {
+      const resolveLLMSpy = jest.spyOn(aiConfig, 'resolveLLM');
+
+      await aiService.generateBudgetRecommendations(
+        { monthlyIncome: 50000, currentBudget: [], spendingHistory: [] },
+        mockUserId
+      );
+
+      expect(resolveLLMSpy).toHaveBeenCalledWith(
+        mockUserId,
+        aiConfig.AI_CONFIG.TEMPERATURE_STRATEGY
+      );
+    });
+
+    it('passes userId through chat', async () => {
+      const resolveLLMSpy = jest.spyOn(aiConfig, 'resolveLLM');
+
+      await aiService.chat('Hello', undefined, mockUserId);
+
+      expect(resolveLLMSpy).toHaveBeenCalledWith(mockUserId, aiConfig.AI_CONFIG.TEMPERATURE_CHAT);
+    });
+
+    it('still resolves the fallback LLM when no userId is provided (unchanged existing behavior)', async () => {
+      const resolveLLMSpy = jest.spyOn(aiConfig, 'resolveLLM');
+
+      const result = await aiService.chat('Hello');
+
+      expect(resolveLLMSpy).toHaveBeenCalledWith(undefined, aiConfig.AI_CONFIG.TEMPERATURE_CHAT);
+      expect(result).toBeDefined();
     });
   });
 });
